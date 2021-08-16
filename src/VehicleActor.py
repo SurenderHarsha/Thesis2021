@@ -5,13 +5,17 @@ import numpy as np
 from PIL import Image
 import time
 
+import warnings
+warnings.filterwarnings("ignore")
+
 class VehicleManager(object):
     
     
-    def __init__(self,ego_vehicle,world,scenario,neighbours = 4):
+    def __init__(self,ego_vehicle,world,scenario,baseline = False,neighbours = 4):
         self.ego_vehicle = ego_vehicle
         self.world = world
         self.scenario = scenario
+        self.baseline = baseline
         
         self.ego_front_buffer = None
         self.ego_back_buffer = None
@@ -181,6 +185,10 @@ class VehicleSensors(object):
         self.back_frame = None
         self.gnss_frame = None
         
+        self.p_front_frame = -1
+        self.p_back_frame = -1
+        self.p_gnss_frame = -1
+        
         self.input_h = 300
         self.input_w = 300
         
@@ -205,9 +213,12 @@ class VehicleSensors(object):
         
         
     def stop_sensors(self):
-        self.rgb_back_listener.stop()
-        self.rgb_front_listener.stop()
-        self.gnss_listener.stop()
+        if self.rgb_back_listener.is_listening:
+            self.rgb_back_listener.stop()
+        if self.rgb_front_listener.is_listening:
+            self.rgb_front_listener.stop()
+        if self.gnss_listener.is_listening:
+            self.gnss_listener.stop()
     
     def set_front_buffer(self,img):
         self.front_frame = img.frame
