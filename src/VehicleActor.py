@@ -44,10 +44,60 @@ class VehicleManager(object):
         self.vehicleSensorslist = {}
         
         #Initialize vehicle sensors
-        self.init_sensors()
+        if baseline:
+            self.ego_setup_sensors()
+        else:
+            self.init_sensors()
         
         
-    
+    def radar_vectors(self,limit):
+        dist3 = {}
+        for i in self.vehicles:
+            if self.vehicles[i].get_location().x <= self.ego_vehicle.get_location().x + limit and self.vehicles[i].get_location().x >= self.ego_vehicle.get_location().x:
+                vector_direction = (self.vehicles[i].get_location().x - self.ego_vehicle.get_location().x,self.vehicles[i].get_location().y - self.ego_vehicle.get_location().y,self.vehicles[i].get_location().z - self.ego_vehicle.get_location().z)
+                dist3[i] = [self.ego_vehicle.get_location().distance(self.vehicles[i].get_location()),vector_direction]
+        self.radar_v = dist3
+        
+    def ars_data(self):
+        avg_throttle = 0
+        avg_steer = 0
+        for i in self.radar_v:
+            avg_throttle += self.radar_v[i][1][0]
+            avg_steer += self.radar_v[i][1][1]
+        avg_throttle = avg_throttle/len(self.radar_v.keys())
+        avg_steer *= -1
+        return avg_throttle,avg_steer
+    def ars_data_two(self):
+        #print(self.radar_v)
+        
+        dist = {}
+        for vehicle in self.radar_v:
+            d = self.radar_v[vehicle][0]
+            dist[vehicle] = d
+        #print(dist)
+        updated_dist = dict(sorted(dist.items(), key=lambda item: item[1]))
+        #print(updated_dist)
+        neighbour_profiles = list(updated_dist.keys())[:4]
+        #print(neighbour_profiles)
+        d = []
+        for i in self.radar_v:
+            if i in neighbour_profiles:
+                d.append(self.radar_v[i])
+        #print(d)
+        #d = list(self.radar_v.items())
+        l = []
+        for i in d:
+            l.append(i[0])
+            l.append(i[1][0])
+            l.append(i[1][1])
+            l.append(i[1][2])
+            #l.append(i[1][1])
+        #print(len(l))
+        padding = 16- len(l)
+        for i in range(padding):
+            l.append(0)
+                       
+        return l
     def init_sensors(self):
         self.ego_setup_sensors()
         
