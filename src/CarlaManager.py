@@ -121,6 +121,7 @@ class CarlaManager(object):
         
     def reload_carla(self):
         try:
+            
             self.carla_simulator = threading.Thread(target = self.cmd_carla)
             self.carla_simulator.start()
            
@@ -128,6 +129,7 @@ class CarlaManager(object):
             self.delay(5)
             
             self.client = carla.Client(self.host,self.port)
+            self.scenario.close()
             self.scenario = prepare_ngsim_scenario(self.client)
             self.world = self.client.get_world()
             self.spectator = self.world.get_spectator()
@@ -157,6 +159,7 @@ class CarlaManager(object):
         pass
     
     def simple_radar_ars(self,input_size,output_size):
+        global_ep = 0
         def explore(direction=None, delta=None):
             try:
                 self.scenario.reset(self.ego_vehicle)
@@ -173,7 +176,10 @@ class CarlaManager(object):
                     #state = self.env.front_camera.reshape(1, 224, 224, 3) / 255.
                     manager.radar_vectors(30)
                     a_t,a_s = manager.ars_data()
-                    state = np.array([a_t,a_s])
+                    v = self.ego_vehicle.get_velocity()
+                    kmh = int(3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2))
+                    state = np.array([a_t,a_s,kmh,v.x,v.y,v.z])
+                    
                     steps += 1
                     
                     action = self.policy.evaluate(state, delta, direction)
@@ -187,9 +193,20 @@ class CarlaManager(object):
                     cmd, reward, done, _ = self.scenario.step(self.ego_vehicle)
                     #reward *= 20
                     self.steering_cache.append(action[1])
-                    v = self.ego_vehicle.get_velocity()
-                    kmh = int(3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2))
+                    #v = self.ego_vehicle.get_velocity()
+                    #kmh = int(3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2))
+                    #print(cmd)
+                    reward *= 10
+                    steer = action[1]
+                    if (cmd.value == 0  or cmd.value ==1) and np.abs(steer)<0.2:
+                        reward += 10
+                    if (cmd.value == 2 or cmd.value == 5) and (steer > 0.2 and steer < 0.8):
+                        reward += 10
+                    if (cmd.value == 3 or cmd.value == 4) and (steer < -0.2 and steer > -0.8):
+                        reward += 10
                     
+                    
+                    '''
                     if kmh < 60 & kmh > 0.2:
                         #done = False
                         reward += 1 #-1
@@ -212,6 +229,9 @@ class CarlaManager(object):
                         elif np.abs(action[1]) >= 0.9:
                             reward -= 20
                     reward -= (np.abs(np.mean(self.steering_cache)) + np.abs(action[1])) * 10 / 2
+                    '''
+                    #reward -= (np.abs(np.mean(self.steering_cache)) + np.abs(action[1])) * 10 / 2
+                    
                     #state, reward, done, _ = self.env.step(action, steps)
                     #reward = max(min(reward, 1), -1)
                     sum_rewards += reward
@@ -226,7 +246,8 @@ class CarlaManager(object):
                 adjusted_reward = sum_rewards / steps
                 print('Adjusted Reward for episode:', adjusted_reward)
                 del manager
-                
+                if global_ep < 10:
+                    return steps
                 return adjusted_reward
             except Exception as e:
                 print(e,"Reload Carla")
@@ -238,6 +259,7 @@ class CarlaManager(object):
             
             for step in range(self.hp.nb_steps):
                 self.historical_steps += 1
+                global_ep = step
                 print('Performing step {}. ({}/{})'.format(self.historical_steps,
                                                            step + 1,
                                                            self.hp.nb_steps
@@ -504,19 +526,26 @@ class CarlaManager(object):
                 
                 
                 
-    def run_basic_a3c(self,epochs = 50,render = False):
+    def run_basic_a3c(self,N_S,N_A,epochs = 50,render = False,num_workers = 2):
+        gnet = Net(N_S, N_A)        # global network
+        gnet.share_memory()
+        opt = SharedAdam(gnet.parameters(), lr=1e-4, betas=(0.95, 0.999))
+        global_ep, global_ep_r, res_queue = mp.Value('i', 0), mp.Value('d', 0.), mp.Queue()
+        
+        workers = [Worker(gnet, opt, global_ep, global_ep_r, res_queue, i,N_S,N_A) for i in range(num_workers)]
+        
         pass
     
     
 class Worker(mp.Process):
      
-    def __init__(self, gnet, opt, global_ep, global_ep_r, res_queue, name):
+    def __init__(self, gnet, opt, global_ep, global_ep_r, res_queue, name,N_S,N_A):
         super(Worker, self).__init__()
         self.name = 'w%i' % name
         self.g_ep, self.g_ep_r, self.res_queue = global_ep, global_ep_r, res_queue
         self.gnet, self.opt = gnet, opt
         self.lnet = Net(N_S, N_A)           # local network
-        self.env = gym.make('Pendulum-v0').unwrapped
+        #self.env = gym.make('Pendulum-v0').unwrapped
 
     def run(self):
         total_step = 1
