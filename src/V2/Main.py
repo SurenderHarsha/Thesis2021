@@ -18,8 +18,9 @@ from PIL import Image
 import cv2
 import math
 import pickle
-
-
+import time
+import subprocess
+import re
 
 
 
@@ -80,7 +81,7 @@ def prepare_ego_vehicle(world: carla.World) -> carla.Actor:
 class CarlaManager(object):
     
     
-    def __init__(self,random_seed = 1,host = 'localhost',port = 2000):
+    def __init__(self,random_seed = 663073192825619597,host = 'localhost',port = 2000):
         self.update_timestep = 1000     # update policy every n timesteps
         self.K_epochs = 40               # update policy for K epochs
         self.eps_clip = 0.2              # clip parameter for PPO
@@ -94,7 +95,7 @@ class CarlaManager(object):
         
         torch.manual_seed(random_seed)
         random.seed(random_seed)
-        np.random.seed(random_seed)
+        #np.random.seed()
         self.host = host
         self.port = port
         self.scenario = None
@@ -111,11 +112,19 @@ class CarlaManager(object):
     def load_carla(self):
         try:
                 
+                l = subprocess.check_output("ps -ef | grep Carla | awk '{print $2}'",shell = True)
+                s = re.findall(r'\d+', str(l))
+                for i in range(len(s)-1):
+                    try:
+                        os.system('kill -9 '+s[i])
+                    except:
+                        pass
+                print("Killing old carla")
                 self.carla_simulator = threading.Thread(target = self.cmd_carla)
                 self.carla_simulator.start()
                
                 print("Starting carla, loading......")
-                self.delay(20)
+                time.sleep(20)
                 
                 self.client = carla.Client(self.host,self.port)
                 if self.scenario != None:
@@ -133,7 +142,7 @@ class CarlaManager(object):
         except Exception as e:
                 print("Crash failed! reloading until fixed",e)
                 self.load_carla()
-    
+                #sys.exit(0)
     def init_algorithm(self,out_dim):
         self.policy = PPO(1,out_dim,self.lr_actor,self.lr_critic,self.gamma,self.K_epochs,self.eps_clip,True)
     def load_policy(self,load_file):
@@ -151,8 +160,15 @@ class CarlaManager(object):
         for epoch in range(epochs):
             
             step = 0
-            self.scenario.reset(self.ego_vehicle)
-            frame = self.world.tick()
+            try:
+                self.scenario.reset(self.ego_vehicle)
+                frame = self.world.tick()
+            except:
+                total_reward_list.append(np.mean(total_reward_list))
+                epoch_list.append(epoch)
+                step_list.append(int(np.mean(step_list)))
+                self.load_carla()
+                continue
             done = False
             
             total_r = 0
@@ -174,9 +190,29 @@ class CarlaManager(object):
                         #print(current_frame,c)
                         break
                 '''
-                birdview = self.birdview_producer.produce(
-                    agent_vehicle=self.ego_vehicle  # carla.Actor (spawned vehicle)
-                    )
+                try:
+                    birdview = self.birdview_producer.produce(
+                        agent_vehicle=self.ego_vehicle  # carla.Actor (spawned vehicle)
+                        )
+                except:
+                    print(e)
+                    self.load_carla()
+                    step = 0
+                    self.scenario.reset(self.ego_vehicle)
+                    frame = self.world.tick()
+                    done = False
+
+                    total_r = 0
+                    val = 0
+
+
+                    t_clip_n = 0.0
+                    t_clip_p = 1.0
+
+                    s_clip_n = -1.0
+                    s_clip_p = 1.0
+                    continue
+    
                 in_data = birdview[:5,:,:]
                 in_data = in_data.reshape((1,5,186,150))
                 #in_data = input_data.reshape((1,3,320,320))
@@ -298,7 +334,7 @@ class CarlaManager(object):
                 '''
                 if (val == 0  or val ==1):
                     if throttle > 0.2 and throttle < 0.8:
-                        reward += 0.1
+                        reward += 0.2
                 
                 if (val == 2 or val == 5):
                     if action[1] > 0.2 and action[1] <0.5:
@@ -326,8 +362,11 @@ class CarlaManager(object):
                     self.policy.decay_action_std(0.01,0.001)
                 frame = self.world.tick()
             
-            try:   
-                p.update()
+            try:
+                if step > 1 and len(self.policy.buffer.states) > 1:   
+                    self.policy.update()
+                else:
+                    pass
             except Exception as e:
                 print("Error:",e)
                 pass
@@ -338,24 +377,25 @@ class CarlaManager(object):
             epoch_list.append(epoch)
             step_list.append(step)
             
-        if epoch % self.save_every == 0:
-            History = [epoch_list,total_reward_list,step_list]
-            total_reward_list = []
-            epoch_list = []
-            step_list = []
-            self.policy.save(save_path + str("Model_"+str(epoch)+"_"+str(iteration)+".mdl")
-            f = open(hist_path + "History_"+str(epoch)+"_"+str(iteration)+".pkl",'wb')
-            pickle.dump(History,f)
-            f.close()
+            if epoch % self.save_every == 0:
+                print("Saving model and history")
+                History = [epoch_list,total_reward_list,step_list]
+                total_reward_list = []
+                epoch_list = []
+                step_list = []
+                self.policy.save(save_path + str("Model_"+str(epoch)+"_"+str(iteration)+".mdl"))
+                f = open(hist_path + "History_"+str(epoch)+"_"+str(iteration)+".pkl",'wb')
+                pickle.dump(History,f)
+                f.close()
 
 
 if __name__ == "__main__":
     args = sys.argv
     c = CarlaManager()
     try:
-        load_file_name = args[2]
+        load_file_name = args[3]
         
-        load_q = bool(args[3])
+        load_q = bool(args[4])
     except:
         load_file_name = ""
         load_q = False
@@ -363,8 +403,8 @@ if __name__ == "__main__":
     if load_q:
         c.load_policy(load_file_name)
     
-    total_epochs = int(args[0])
-    iteration = int(args[1])
+    total_epochs = int(args[1])
+    iteration = int(args[2])
     
     
     c.train(model_path,history_path,iteration,total_epochs)
