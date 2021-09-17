@@ -49,55 +49,30 @@ class ActorCritic(nn.Module):
             self.action_dim = action_dim
             self.action_var = torch.full((action_dim,), action_std_init * action_std_init).to(device)
         
+        
         self.actor = nn.Sequential(
-            nn.Conv2d(num_channels, 32, kernel_size=8, stride=2),
-            nn.BatchNorm2d(32),
-            nn.MaxPool2d(4,2),
-            nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=1),
-            nn.BatchNorm2d(64),
-            nn.MaxPool2d(2,1),
-            nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=4, stride=1),
-            nn.BatchNorm2d(128),
-            nn.MaxPool2d(2,1),
-            #nn.Conv2d(128, 256, kernel_size=4, stride=1),
-            #nn.BatchNorm2d(256),
-            #nn.MaxPool2d(2,1),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(124416, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size,action_dim),
+            nn.Linear(20480, 1024),
+            nn.Tanh(),
+            nn.Linear(1024, 256),
+            nn.Tanh(),
+            nn.Linear(256,64),
+            nn.Tanh(),
+            nn.Linear(64,action_dim),
             nn.Tanh()
-            
-            
+        
+        )
+        self.critic = nn.Sequential(
+            nn.Linear(20480, 512),
+            nn.Tanh(),
+            #nn.Linear(1024, 256),
+            #nn.Tanh(),
+            nn.Linear(512,64),
+            nn.Tanh(),
+            nn.Linear(64,1),
+            nn.Tanh()
+        
         )
         
-        self.critic = nn.Sequential(
-            nn.Conv2d(num_channels, 32, kernel_size=8, stride=2),
-            nn.BatchNorm2d(32),
-            nn.MaxPool2d(4,2),
-            nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=1),
-            nn.BatchNorm2d(64),
-            nn.MaxPool2d(2,1),
-            nn.ReLU(),
-            nn.Conv2d(64, 128, kernel_size=4, stride=1),
-            nn.BatchNorm2d(128),
-            nn.MaxPool2d(2,1),
-            #nn.Conv2d(128, 256, kernel_size=4, stride=1),
-            #nn.BatchNorm2d(256),
-            #nn.MaxPool2d(2,1),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(124416, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size,1),
-            nn.Tanh()
-            
-            
-        )
         
         
         #self.l1 = nn.Conv2d(num_channels, 32, kernel_size=4, stride=2)
@@ -286,7 +261,7 @@ class ActorCritic(nn.Module):
         return action_logprobs, state_values, dist_entropy
 
 class PPO:
-    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std_init=0.6):
+    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std_init=0.7):
 
         self.has_continuous_action_space = has_continuous_action_space
 
