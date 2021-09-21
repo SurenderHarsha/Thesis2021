@@ -21,46 +21,38 @@ import pickle
 import time
 import subprocess
 import re
+from controller import VehiclePIDController
+#from tensorflow.keras.applications import MobileNet
 
-from tensorflow.keras.applications import MobileNet
-
-mdl = MobileNet(input_shape=(186, 150, 3),include_top=False,weights="imagenet",pooling=max)
+#mdl = MobileNet(input_shape=(186, 150, 3),include_top=False,weights="imagenet",pooling=max)
 
 model_path = '/data/s4120310/Models/'
 history_path = '/data/s4120310/History/'
 
-def prepare_ngsim_scenario(client: carla.Client) -> Scenario:
+def prepare_ngsim_scenario(client: carla.Client, data_mode = "train") -> Scenario:
     data_dir = os.environ.get("NGSIM_DIR")
     #data_dir = os.listdir('/home/surender/Downloads/NGSIM')
     assert data_dir, "Path to the directory with NGSIM dataset is required"
     ngsim_map = NGSimDatasets.list()
     ngsim_dataset = ngsim_map[1]
     client.load_world(ngsim_dataset.carla_map.level_path)
-    return NGSimLaneChangeScenario(
-        ngsim_dataset,
-        dataset_mode=DatasetMode.TRAIN,
-        data_dir=data_dir,
-        reward_type=RewardType.DENSE,
-        client=client,
-    )
+    if data_mode == "train":
+        return NGSimLaneChangeScenario(
+            ngsim_dataset,
+            dataset_mode=DatasetMode.TRAIN,
+            data_dir=data_dir,
+            reward_type=RewardType.DENSE,
+            client=client,
+        )
+    else:
+        return NGSimLaneChangeScenario(
+            ngsim_dataset,
+            dataset_mode=DatasetMode.VALIDATION,
+            data_dir=data_dir,
+            reward_type=RewardType.DENSE,
+            client=client,
+        )
 
-'''
-def prepare_opendd_scenario(client: carla.Client) -> Scenario:
-    data_dir = os.environ.get("OPENDD_DIR")
-    assert data_dir, "Path to the directory with openDD dataset is required"
-    maps = ["rdb1", "rdb2", "rdb3", "rdb4", "rdb5", "rdb6", "rdb7"]
-    map_name = random.choice(maps)
-    carla_map = getattr(CarlaMaps, map_name.upper())
-    client.load_world(carla_map.level_path)
-    return OpenDDScenario(
-        client,
-        dataset_dir=data_dir,
-        dataset_mode=DatasetMode.TRAIN,
-        reward_type=RewardType.DENSE,
-        place_name=map_name,
-    )
-
-'''
 def prepare_ego_vehicle(world: carla.World) -> carla.Actor:
     car_blueprint = world.get_blueprint_library().find("vehicle.audi.a2")
 
@@ -83,11 +75,11 @@ def prepare_ego_vehicle(world: carla.World) -> carla.Actor:
 class CarlaManager(object):
     
     
-    def __init__(self,random_seed = 663073192825619597,host = 'localhost',port = 2000):
+    def __init__(self,random_seed = 663073,host = 'localhost',port = 2000):
         self.update_timestep = 1000     # update policy every n timesteps
         self.K_epochs = 40               # update policy for K epochs
         self.eps_clip = 0.2              # clip parameter for PPO
-        self.gamma = 0.99                # discount factor
+        self.gamma = 0.999                # discount factor
         
         self.lr_actor = 0.0003       # learning rate for actor network
         self.lr_critic = 0.001       # learning rate for critic network
@@ -129,6 +121,7 @@ class CarlaManager(object):
                 time.sleep(20)
                 
                 self.client = carla.Client(self.host,self.port)
+                time.sleep(5)
                 if self.scenario != None:
                     self.scenario.close()
                 self.scenario = prepare_ngsim_scenario(self.client)
@@ -150,7 +143,7 @@ class CarlaManager(object):
     def load_policy(self,load_file):
         self.policy.load(load_file)
     
-    def train(self,save_path,hist_path,iteration ,epochs = 500,batch_size = 200,freq_decrease = 1000):
+    def train(self,save_path,hist_path,iteration ,epochs = 500,batch_size = 100,freq_decrease = 1000):
         total_reward_list = []
         epoch_list = []
         step_list = []
@@ -159,6 +152,7 @@ class CarlaManager(object):
         
         freq = batch_size
         freq_n = freq_decrease
+        min_r_avg = -1
         for epoch in range(epochs):
             
             step = 0
@@ -174,7 +168,7 @@ class CarlaManager(object):
                 crop_type=BirdViewCropType.FRONT_AREA_ONLY
                 )
                 self.scenario.reset(self.ego_vehicle)
-                #frame = self.world.tick()
+                frame = self.world.tick()
             except Exception as e:
                 print("Error at epoch begin:,",e)
                 total_reward_list.append(np.mean(total_reward_list))
@@ -187,13 +181,14 @@ class CarlaManager(object):
             total_r = 0
             val = 0
             
-            
+            way = self.ego_vehicle.get_transform()
             t_clip_n = 0.0
             t_clip_p = 1.0
             
             s_clip_n = -1.0
             s_clip_p = 1.0
-            
+            cmd_buffer = [0]
+            yaw_buffer = [0]
             
             while not done:
                 '''
@@ -207,78 +202,28 @@ class CarlaManager(object):
                     birdview = self.birdview_producer.produce(
                         agent_vehicle=self.ego_vehicle  # carla.Actor (spawned vehicle)
                         )
-                    rgb = BirdViewProducer.as_rgb(birdview)
-                    in_data = rgb.reshape(1,186,150,3)
-                    in_data = mdl(in_data).numpy()
-                    in_data = in_data.reshape(in_data.shape[0],20480)
+                    a = birdview[0].reshape(1,186,150)
+                    a = np.append(a,birdview[1].reshape(1,186,150),axis=0)
+                    a = np.append(a,birdview[2].reshape(1,186,150),axis=0)
+                    a = np.append(a,birdview[3].reshape(1,186,150),axis=0)
+                    a = np.append(a,birdview[4].reshape(1,186,150),axis=0)
                     
+                    in_data = a.reshape(1,5,186,150)
                 except:
                     break
     
-                #in_data = birdview[:5,:,:]
-                #in_data = in_data.reshape((1,5,186,150))
-                #in_data = input_data.reshape((1,3,320,320))
                 action = self.policy.select_action(in_data)
-                #print(action)
-                '''
-                if (val == 0  or val ==1):
-                    s_clip_n = -0.15
-                    s_clip_p = 0.15
-                    t_clip_n = 0.4
-                    t_clip_p = 1.0
+                steer = action[1]
+                _speed = np.clip(action[0], -1,1)
+                speed = ((_speed + 1)/2)*50 + 10
                 
-                if (val == 2 or val == 5):
-                    s_clip_n = 0.25
-                    s_clip_p = 0.8
-                    t_clip_n = 0.0
-                    t_clip_p = 0.4
+                pid = VehiclePIDController(self.ego_vehicle)
+                k = pid.run_step(speed,way)
+                throttle = k.throttle
+                brake = k.brake
                 
-                if (val == 3 or val == 4):
-                    s_clip_n = -0.8
-                    s_clip_p = -0.25
-                    t_clip_n = 0.0
-                    t_clip_p = 0.4
-                '''
-                    
                 
-                t_clip_n = 0.0
-                t_clip_p = 1.0
-        
-                s_clip_n = -1.0
-                s_clip_p = 1.0    
-                '''
-                brake = 0.0
-                throttle = 0.0
-                
-                if action[0] <0:
-                    brake = action[0]
-                    throttle = 0.0
-                else:
-                    throttle = action[0]
-                    brake = 0.0
-                '''
-                throttle = action[0]
-                '''
-                if (val == 0  or val ==1):
-                    s_clip_n = -0.15
-                    s_clip_p = 0.15
-                    t_clip_n = 0.3
-                    t_clip_p = 1.0
-                
-                if (val == 2 or val == 5):
-                    s_clip_n = 0.25
-                    s_clip_p = 0.8
-                    t_clip_n = 0.0
-                    t_clip_p = 0.4
-                
-                if (val == 3 or val == 4):
-                    s_clip_n = -0.8
-                    s_clip_p = -0.25
-                    t_clip_n = 0.0
-                    t_clip_p = 0.4
-                '''
-                #if epoch < 20:
-                self.ego_vehicle.apply_control(carla.VehicleControl(throttle=np.clip(throttle, t_clip_n, t_clip_p), steer=np.clip(action[1], s_clip_n, s_clip_p)))#,brake=np.clip(brake, 0.0, 1.0)))
+                self.ego_vehicle.apply_control(carla.VehicleControl(throttle=np.clip(throttle, t_clip_n, t_clip_p), steer=np.clip(steer, s_clip_n, s_clip_p),brake=np.clip(brake, 0.0, 1.0)))
                 
                 
                 try:
@@ -305,8 +250,9 @@ class CarlaManager(object):
                     
                     total_r = 0
                     val = 0
-                    
-                    
+                    way = self.ego_vehicle.get_transform()
+                    cmd_buffer = [0]
+                    yaw_buffer = [0]
                     t_clip_n = 0.0
                     t_clip_p = 1.0
                     
@@ -315,63 +261,14 @@ class CarlaManager(object):
                     continue
                     
                 val = cmd.value
-                #print(done)
-                #if done:
-                #    print(_)
-                #print(_)
-                
-                
-                #v = self.ego_vehicle.get_velocity()
-                #kmh = int(3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2))
-                
-                '''
-                if kmh < 60 & kmh > 0.2:
-                    #done = False
-                    reward += 1 #-1
-                    # Reward lighter steering when moving
-                    if np.abs(action[1]) < 0.3:
-                        reward += 1
-                    elif np.abs(action[1]) > 0.5 and np.abs(action[1]) < 0.9:
-                        reward -= 0.1
-                    elif np.abs(action[1]) >= 0.9:
-                        reward -= 0.2
-                elif kmh < 0.2:
-                    reward -= 0.1
-                else:
-                    #print("Maybe never")
-                    reward += 0.01
-                    if np.abs(action[1]) < 0.3:
-                        reward += 0.12
-                    # Reduce score for heavy steering
-                    if np.abs(action[1]) > 0.5 and np.abs(action[1]) < 0.9:
-                        reward -= 0.17
-                    elif np.abs(action[1]) >= 0.9:
-                        reward -= 0.21
-                '''
-                if (val == 0  or val ==1):
-                    if action[0] > 0.0:
-                        reward += 0.01
-                    if action[1] < 0.1 and action[1]> -0.1:
-                        reward += 0.01
-
-
-                if (val == 2 or val == 5):
-                    if action[0] <0.1:
-                        reward += 0.01
-                    if action[1] > 0.0:
-                        reward += 0.01
-
-                if (val == 3 or val == 4):
-                    if action[0] < 0.1:
-                        reward += 0.01
-                    if action[1] < 0.0:
-                        reward += 0.01
-                '''
-                rgb = BirdViewProducer.as_rgb(birdview)
-                cv2.imshow('Frame',rgb)
-                if cv2.waitKey(25) & 0xFF == ord('q'):
-                    break
-                '''
+                #val = cmd.value
+                cmd_buffer.append(val)
+                yaw_buffer.append(self.ego_vehicle.get_transform().rotation.yaw)
+                if len(cmd_buffer) > 10:
+                    if sum(cmd_buffer[-10:]) == 0 and _['on_target_lane'] and abs(sum(yaw_buffer[-5:])/5)<=10:
+                        reward = 1
+                        done = True
+                way = _["scenario_data"]["original_veh_transform"]
                 self.policy.buffer.rewards.append(reward)
                 self.policy.buffer.is_terminals.append(done)
                 
@@ -387,16 +284,34 @@ class CarlaManager(object):
                 frame = self.world.tick()
             
             try:
-                if sum(step_list) % freq_n == 0:   
-                    print("Decaying:",self.policy.action_std)
-                    self.policy.decay_action_std(0.05,0.1)
-                else:
-                    pass
-                if len(self.policy.buffer.states)> freq:
-                    print("Update with batches:",len(self.policy.buffer.states))
-                    self.policy.update()
-                 else:
-                    pass
+                
+                if len(total_reward_list) > 50:
+        
+                    if sum(total_reward_list[-50:])/len(total_reward_list[-50:]) > min_r_avg or sum(step_list) > freq_n:
+                        #freq_n += 1000
+                        #decay_c -= 50
+                        #print("Decaying:",self.pop.action_std)
+                        self.policy.decay_action_std(0.01,0.1)
+                        
+                        min_r_avg = sum(total_reward_list[-50:])/len(total_reward_list[-50:])
+                if len(self.policy.buffer.states) > freq:
+                        #print(steer,avg_steer,throttle,brake,steer_w)
+                        print("Update with batches:",len(self.policy.buffer.states))
+                        self.policy.update()
+                        
+                        
+                        val_score = self.validate()
+                        self.policy.decay_action_std(0.001,0.1)
+                        print("Saving model and history")
+                        History = [epoch_list,total_reward_list,step_list,val_score]
+                        total_reward_list = []
+                        epoch_list = []
+                        step_list = []
+                        self.policy.save(save_path + str("Model_"+str(epoch)+"_"+str(iteration)+".mdl"))
+                        f = open(hist_path + "History_"+str(epoch)+"_"+str(iteration)+".pkl",'wb')
+                        pickle.dump(History,f)
+                        f.close()
+                        
             except Exception as e:
                 print("Error:",e)
                 pass
@@ -406,19 +321,112 @@ class CarlaManager(object):
             total_reward_list.append(total_r)
             epoch_list.append(epoch)
             step_list.append(step)
+    def validate(self):
+        val_success = []
+        for i in range(50):
+            t_clip_n = 0.0
+            t_clip_p = 1.0
+        
+            s_clip_n = -1.0
+            s_clip_p = 1.0
+        
+            step = 0
+            try:
+                self.scenario = prepare_ngsim_scenario(self.client,"Val")
+                self.world = self.client.get_world()
+                self.spectator = self.world.get_spectator()
+                self.ego_vehicle = prepare_ego_vehicle(self.world)
+                self.birdview_producer = BirdViewProducer(
+                    self.client,  # carla.Client
+                    target_size=PixelDimensions(width=150, height=186),
+                    pixels_per_meter=4,
+                    crop_type=BirdViewCropType.FRONT_AREA_ONLY
+                    )
+                self.scenario.reset(self.ego_vehicle)
+                c = self.world.tick()
+            except Exception as e:
+                print("Error:",e)
+                val_success.append(0)
+                self.load_carla()
+                continue
             
-            if epoch % self.save_every == 0:
-                print("Saving model and history")
-                History = [epoch_list,total_reward_list,step_list]
-                total_reward_list = []
-                epoch_list = []
-                step_list = []
-                self.policy.save(save_path + str("Model_"+str(epoch)+"_"+str(iteration)+".mdl"))
-                f = open(hist_path + "History_"+str(epoch)+"_"+str(iteration)+".pkl",'wb')
-                pickle.dump(History,f)
-                f.close()
-
-
+            way = self.ego_vehicle.get_transform()
+            done = False
+            reward = 0
+            val = 0
+            cmd_buffer = [0]
+            yaw_buffer = [0]
+            while not done:
+        
+                    birdview = self.birdview_producer.produce(
+                        agent_vehicle=self.ego_vehicle  # carla.Actor (spawned vehicle)
+                        )
+                    a = birdview[0].reshape(1,186,150)
+                    a = np.append(a,birdview[1].reshape(1,186,150),axis=0)
+                    a = np.append(a,birdview[2].reshape(1,186,150),axis=0)
+                    a = np.append(a,birdview[3].reshape(1,186,150),axis=0)
+                    a = np.append(a,birdview[4].reshape(1,186,150),axis=0)
+                    #a = np.append(a,birdview[4].reshape(1,224,224),axis=0)
+                    #rgb = BirdViewProducer.as_rgb(birdview)/255.
+                    in_data = a.reshape(1,5,186,150)
+        
+                    action = self.policy.select_action(in_data)
+                    steer = action[1]
+                    _speed = np.clip(action[0], -1,1)
+                    speed = ((_speed + 1)/2)*50 + 10
+        
+        
+        
+                    pid = VehiclePIDController(self.ego_vehicle)
+                    k = pid.run_step(speed,way)
+                    throttle = k.throttle
+                    brake = k.brake
+        
+                    avg_steer = steer
+                    self.ego_vehicle.apply_control(carla.VehicleControl(throttle=throttle, steer=np.clip(avg_steer, s_clip_n, s_clip_p),brake=brake))
+        
+                    #ego_vehicle.apply_control(carla.VehicleControl(throttle=np.clip(throttle, t_clip_n, t_clip_p), steer=np.clip(action[1], s_clip_n, s_clip_p)))#,brake=np.clip(brake, 0.0, 1.0)))
+        
+        
+                    try:
+                        cmd, reward, done, _ = self.scenario.step(self.ego_vehicle)
+                    except:
+                        break
+                    '''
+                    if reward < 0 :
+                        reward = -0.1
+                    '''
+        
+        
+        
+                    #print(reward, cmd, _['scenario_data']['original_to_ego_distance'], throttle,steer)
+        
+                    val = cmd.value
+                    cmd_buffer.append(val)
+                    yaw_buffer.append(self.ego_vehicle.get_transform().rotation.yaw)
+                    if len(cmd_buffer) > 10:
+                        if sum(cmd_buffer[-10:]) == 0 and _['on_target_lane'] and abs(sum(yaw_buffer[-5:])/5)<=10:
+                            reward = 1
+                            done = True
+        
+                    
+                    way = _["scenario_data"]["original_veh_transform"]
+                    #way = scenario._target_lane_waypoint.transform 
+                    '''
+                    rgb = BirdViewProducer.as_rgb(birdview)
+                    cv2.imshow('Frame',rgb)
+                    if cv2.waitKey(25) & 0xFF == ord('q'):
+                        break
+                    '''
+                    c = self.world.tick()
+            if reward >0.9:
+                #val_reward.append(reward)
+                val_success.append(1)
+            else:
+                #val_reward.append(reward)
+                val_success.append(0)
+                
+        return sum(val_success)/len(val_success)
 if __name__ == "__main__":
     args = sys.argv
     c = CarlaManager()

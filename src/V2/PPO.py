@@ -51,94 +51,27 @@ class ActorCritic(nn.Module):
         
         
         self.actor = nn.Sequential(
-            nn.Linear(20480, 1024),
-            nn.Tanh(),
-            nn.Linear(1024, 256),
-            nn.Tanh(),
-            nn.Linear(256,64),
-            nn.Tanh(),
-            nn.Linear(64,action_dim),
+            nn.Conv2d(num_channels, 16, kernel_size=8, stride=4),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2),
+            nn.ReLU(),
+            nn.MaxPool2d(4,2),
+            nn.Flatten(),
+            nn.Linear(2240, action_dim),
             nn.Tanh()
         
         )
         self.critic = nn.Sequential(
-            nn.Linear(20480, 512),
-            nn.Tanh(),
-            #nn.Linear(1024, 256),
-            #nn.Tanh(),
-            nn.Linear(512,64),
-            nn.Tanh(),
-            nn.Linear(64,1),
+            nn.Conv2d(num_channels, 16, kernel_size=8, stride=4),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2),
+            nn.ReLU(),
+            nn.MaxPool2d(4,2),
+            nn.Flatten(),
+            nn.Linear(2240, 1),
             nn.Tanh()
         
         )
-        
-        
-        
-        #self.l1 = nn.Conv2d(num_channels, 32, kernel_size=4, stride=2)
-        #self.l2 = nn.Conv2d(32, 16, kernel_size=4, stride=2)
-        #self.l3 = nn.Conv2d(16, 8, kernel_size=3, stride=1)
-        #self.p = nn.MaxPool2d(2, 2)
-        ''''
-        self.encoder = nn.Sequential(
-            nn.Conv2d(num_channels, 32, kernel_size=4, stride=2),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(32, 16, kernel_size=4, stride=2),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(16, 16, kernel_size=3, stride=1),
-            
-            #nn.MaxPool2d(2, 2)
-        )
-        
-        self.l1 = nn.ConvTranspose2d(16, 16, kernel_size = 8, stride=4)
-        self.relu = nn.ReLU()
-        self.l2 = nn.ConvTranspose2d(16, 32, kernel_size = 8, stride=1)
-        self.l3 = nn.ConvTranspose2d(32, 3, kernel_size = 8, stride=2)
-        self.sig = nn.Sigmoid()
-        
-        self.layer1 = nn.Conv2d(num_channels, 32, kernel_size=8, stride=4)
-        self.relu = nn.ReLU();
-        self.layer2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
-        self.layer3 = nn.Conv2d(64, 32, kernel_size=3, stride=1)
-        self.flatten = nn.Flatten()
-        self.layer4 = nn.Linear(9120,512)
-        self.actol = nn.Linear(512, action_dim)
-        self.acto = nn.Tanh()
-        self.crit = nn.Linear(512, 1)
-        '''
-        #self.actor = nn.Sequential(self.main,nn.Linear(hidden_size, action_dim))
-        #self.critic = nn.Sequential(self.main_two,nn.Linear(hidden_size, 1))
-        '''
-        # actor
-        if has_continuous_action_space :
-            self.actor = nn.Sequential(
-                            nn.Linear(state_dim, 64),
-                            nn.Tanh(),
-                            nn.Linear(64, 64),
-                            nn.Tanh(),
-                            nn.Linear(64, action_dim),
-                            nn.Tanh()
-                        )
-        else:
-            self.actor = nn.Sequential(
-                            nn.Linear(state_dim, 64),
-                            nn.Tanh(),
-                            nn.Linear(64, 64),
-                            nn.Tanh(),
-                            nn.Linear(64, action_dim),
-                            nn.Softmax(dim=-1)
-                        )
-
-        
-        # critic
-        self.critic = nn.Sequential(
-                        nn.Linear(state_dim, 64),
-                        nn.Tanh(),
-                        nn.Linear(64, 64),
-                        nn.Tanh(),
-                        nn.Linear(64, 1)
-                    )
-        '''
         
     def set_action_std(self, new_action_std):
 
@@ -149,64 +82,8 @@ class ActorCritic(nn.Module):
             print("WARNING : Calling ActorCritic::set_action_std() on discrete action space policy")
             print("--------------------------------------------------------------------------------------------")
 
-    def AutoEncoder(self,x):
-        '''
-        x = self.encoder(x)
-        print(x.shape)
-        x = self.l1(x)
-        x = self.relu(x)
-        print(x.shape)
-        x = self.l2(x)
-        x = self.relu(x)
-        print(x.shape)
-        x = self.l3(x)
-        x = self.sig(x)
-        print(x.shape)
-        
-        print(x.shape)
-        x = self.l1(x)
-        print(x.shape)
-        x = self.p(x)
-        print(x.shape)
-        x = self.l2(x)
-        print(x.shape)
-        x = self.p(x)
-        print(x.shape)
-        x = self.l3(x)
-        print(x.shape)
-        x = self.p(x)
-        print(x.shape)
-        '''
-        #x = self.encoder(x)
-        #return x
-        pass
-        
-
     def forward(self):
         raise NotImplementedError
-        '''
-        print(x.shape)
-        x = self.layer1(x)
-        #print(x.shape)
-        x = self.relu(x)
-        print(x.shape)
-        x = self.layer2(x)
-        #print(x.shape)
-        x = self.relu(x)
-        print(x.shape)
-        x = self.layer3(x)
-        #print(x.shape)
-        x = self.relu(x)
-        print(x.shape)
-        x = self.flatten(x)
-        print(x.shape)
-        x = self.layer4(x)
-        print(x.shape)
-        a = self.actol(x)
-        a = self.acto(a)
-        v = self.crit(x)
-        return a,v
-        '''
         
     def backward(self, x):
         import pdb
