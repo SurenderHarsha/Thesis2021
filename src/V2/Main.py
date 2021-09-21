@@ -209,7 +209,9 @@ class CarlaManager(object):
                     a = np.append(a,birdview[4].reshape(1,186,150),axis=0)
                     
                     in_data = a.reshape(1,5,186,150)
-                except:
+                except Exception as e:
+                    print("Error in birds eye:",e)
+                    #self.load_carla()
                     break
     
                 action = self.policy.select_action(in_data)
@@ -318,6 +320,8 @@ class CarlaManager(object):
             
             #cv2.destroyAllWindows()
             print("Epoch:",epoch, "Total Reward:",total_r,"Number of Steps:",step)
+            if total_r == 0  and step == 0:
+                self.load_carla()
             total_reward_list.append(total_r)
             epoch_list.append(epoch)
             step_list.append(step)
