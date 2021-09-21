@@ -20,7 +20,7 @@ class VehiclePIDController():
     """
 
 
-    def __init__(self, vehicle, args_lateral, args_longitudinal, max_throttle=0.75, max_brake=0.3, max_steering=0.8):
+    def __init__(self, vehicle, max_throttle=0.75, max_brake=0.3, max_steering=0.8):
         """
         Constructor method.
 
@@ -44,8 +44,8 @@ class VehiclePIDController():
         self._vehicle = vehicle
         self._world = self._vehicle.get_world()
         self.past_steering = self._vehicle.get_control().steer
-        self._lon_controller = PIDLongitudinalController(self._vehicle, **args_longitudinal)
-        self._lat_controller = PIDLateralController(self._vehicle, **args_lateral)
+        self._lon_controller = PIDLongitudinalController(self._vehicle)
+        self._lat_controller = PIDLateralController(self._vehicle)
 
     def run_step(self, target_speed, waypoint):
         """
@@ -194,8 +194,8 @@ class PIDLateralController():
                                          y=math.sin(math.radians(vehicle_transform.rotation.yaw)))
 
         v_vec = np.array([v_end.x - v_begin.x, v_end.y - v_begin.y, 0.0])
-        w_vec = np.array([waypoint.transform.location.x -
-                          v_begin.x, waypoint.transform.location.y -
+        w_vec = np.array([waypoint.location.x -
+                          v_begin.x, waypoint.location.y -
                           v_begin.y, 0.0])
         _dot = math.acos(np.clip(np.dot(w_vec, v_vec) /
                                  (np.linalg.norm(w_vec) * np.linalg.norm(v_vec)), -1.0, 1.0))
