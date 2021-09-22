@@ -211,7 +211,7 @@ class PPO:
                 self.buffer.states.append(state)
                 self.buffer.actions.append(action)
                 self.buffer.logprobs.append(action_logprob)
-
+            
             return action.detach().cpu().numpy().flatten()
 
         else:
