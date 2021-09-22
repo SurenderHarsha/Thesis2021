@@ -143,19 +143,19 @@ class CarlaManager(object):
     def load_policy(self,load_file):
         self.policy.load(load_file)
     
-    def train(self,save_path,hist_path,iteration ,epochs = 500,batch_size = 1000,freq_decrease = 1000):
+    def train(self,save_path,hist_path,iteration ,epochs = 500,batch_size = 500,freq_decrease = 1000):
         total_reward_list = []
         epoch_list = []
         step_list = []
         self.scenario.reset(self.ego_vehicle)
         self.world.tick()        
-        torch.cuda.empty_cache()
+        #torch.cuda.empty_cache()
         
         freq = batch_size
         freq_n = freq_decrease
         min_r_avg = -1
         for epoch in range(epochs):
-            torch.cuda.empty_cache()
+            #torch.cuda.empty_cache()
             step = 0
             try:
                 ids = list(self.world.get_actors())[0].id
@@ -308,7 +308,7 @@ class CarlaManager(object):
                         print("Update with batches:",len(self.policy.buffer.states))
                         self.policy.update()
                         
-                        torch.cuda.empty_cache()
+                        #torch.cuda.empty_cache()
                         val_score = self.validate()
                         
                         self.policy.decay_action_std(0.001,0.1)
@@ -378,7 +378,7 @@ class CarlaManager(object):
         
             s_clip_n = -1.0
             s_clip_p = 1.0
-            torch.cuda.empty_cache()
+            #torch.cuda.empty_cache()
             step = 0
             #del self.ego_vehicle
             #self.scenario = prepare_ngsim_scenario(self.client,"Val")
