@@ -121,7 +121,7 @@ class CarlaManager(object):
                 time.sleep(20)
                 
                 self.client = carla.Client(self.host,self.port)
-                time.sleep(5)
+                #time.sleep(5)
                 if self.scenario != None:
                     self.scenario.close()
                 self.scenario = prepare_ngsim_scenario(self.client)
@@ -143,30 +143,34 @@ class CarlaManager(object):
     def load_policy(self,load_file):
         self.policy.load(load_file)
     
-    def train(self,save_path,hist_path,iteration ,epochs = 500,batch_size = 100,freq_decrease = 1000):
+    def train(self,save_path,hist_path,iteration ,epochs = 500,batch_size = 1000,freq_decrease = 1000):
         total_reward_list = []
         epoch_list = []
         step_list = []
-        
+        self.scenario.reset(self.ego_vehicle)
+        self.world.tick()        
         torch.cuda.empty_cache()
         
         freq = batch_size
         freq_n = freq_decrease
         min_r_avg = -1
         for epoch in range(epochs):
-            
+            torch.cuda.empty_cache()
             step = 0
             try:
-                self.scenario = prepare_ngsim_scenario(self.client)
+                ids = list(self.world.get_actors())[0].id
+                carla.command.DestroyActor(ids)
+                #del self.ego_vehicle
+                #self.scenario = prepare_ngsim_scenario(self.client)
                 self.world = self.client.get_world()
-                self.spectator = self.world.get_spectator()
+                #self.spectator = self.world.get_spectator()
                 self.ego_vehicle = prepare_ego_vehicle(self.world)
-                self.birdview_producer = BirdViewProducer(
-                self.client,  # carla.Client
-                target_size=PixelDimensions(width=150, height=186),
-                pixels_per_meter=4,
-                crop_type=BirdViewCropType.FRONT_AREA_ONLY
-                )
+                #self.birdview_producer = BirdViewProducer(
+                #self.client,  # carla.Client
+                #target_size=PixelDimensions(width=150, height=186),
+                #pixels_per_meter=4,
+                #crop_type=BirdViewCropType.FRONT_AREA_ONLY
+                #)
                 self.scenario.reset(self.ego_vehicle)
                 frame = self.world.tick()
             except Exception as e:
@@ -234,20 +238,23 @@ class CarlaManager(object):
                     print(e)
                     self.load_carla()
                     step = 0
-                    
-                    self.scenario = prepare_ngsim_scenario(self.client)
+                    self.scenario.reset(self.ego_vehicle)
+                    self.world.tick()
+                    ids = list(self.world.get_actors())[0].id
+                    carla.command.DestroyActor(ids)
+                    #self.scenario = prepare_ngsim_scenario(self.client)
                     self.world = self.client.get_world()
-                    self.spectator = self.world.get_spectator()
+                    #self.spectator = self.world.get_spectator()
                     self.ego_vehicle = prepare_ego_vehicle(self.world)
-                    self.birdview_producer = BirdViewProducer(
-                    self.client,  # carla.Client
-                    target_size=PixelDimensions(width=150, height=186),
-                    pixels_per_meter=4,
-                    crop_type=BirdViewCropType.FRONT_AREA_ONLY
-                    )
+                    #self.birdview_producer = BirdViewProducer(
+                    #self.client,  # carla.Client
+                    #target_size=PixelDimensions(width=150, height=186),
+                    #pixels_per_meter=4,
+                    #crop_type=BirdViewCropType.FRONT_AREA_ONLY
+                    #)
                     self.scenario.reset(self.ego_vehicle)
                     #self.scenario.reset(self.ego_vehicle)
-                    #frame = self.world.tick()
+                    frame = self.world.tick()
                     done = False
                     
                     total_r = 0
@@ -301,8 +308,9 @@ class CarlaManager(object):
                         print("Update with batches:",len(self.policy.buffer.states))
                         self.policy.update()
                         
-                        
+                        torch.cuda.empty_cache()
                         val_score = self.validate()
+                        
                         self.policy.decay_action_std(0.001,0.1)
                         print("Saving model and history")
                         History = [epoch_list,total_reward_list,step_list,val_score]
@@ -315,7 +323,7 @@ class CarlaManager(object):
                         f.close()
                         
             except Exception as e:
-                print("Error:",e)
+                print("Error in update:",e)
                 pass
             
             #cv2.destroyAllWindows()
@@ -327,39 +335,80 @@ class CarlaManager(object):
             step_list.append(step)
     def validate(self):
         val_success = []
+        try:
+            self.scenario.close()
+            #self.scenario_val.close()
+        except:
+            pass
+        
+        self.scenario = prepare_ngsim_scenario(self.client,"Val")
+        self.world = self.client.get_world()
+        self.ego_vehicle = prepare_ego_vehicle(self.world)
+        self.birdview_producer = BirdViewProducer(
+                self.client,  # carla.Client
+                target_size=PixelDimensions(width=150, height=186),
+                pixels_per_meter=4,
+                crop_type=BirdViewCropType.FRONT_AREA_ONLY
+        )
+        '''
+        except Exception as e:
+            print("Init Val er:",e)
+            self.load_carla()
+            try:
+                self.scenario.close()
+            except:
+                pass
+            self.scenario = prepare_ngsim_scenario(self.client,"Val")
+            self.world = self.client.get_world()
+            self.ego_vehicle = prepare_ego_vehicle(self.world)
+            self.birdview_producer = BirdViewProducer(
+                self.client,  # carla.Client
+                target_size=PixelDimensions(width=150, height=186),
+                pixels_per_meter=4,
+                crop_type=BirdViewCropType.FRONT_AREA_ONLY
+            )
+        '''
+        #self.scenario_val.reset(self.ego_vehicle)
+        self.scenario.reset(self.ego_vehicle)
+        self.world.tick()
+
         for i in range(50):
             t_clip_n = 0.0
             t_clip_p = 1.0
         
             s_clip_n = -1.0
             s_clip_p = 1.0
-        
+            torch.cuda.empty_cache()
             step = 0
-            try:
-                self.scenario = prepare_ngsim_scenario(self.client,"Val")
-                self.world = self.client.get_world()
-                self.spectator = self.world.get_spectator()
-                self.ego_vehicle = prepare_ego_vehicle(self.world)
-                self.birdview_producer = BirdViewProducer(
-                    self.client,  # carla.Client
-                    target_size=PixelDimensions(width=150, height=186),
-                    pixels_per_meter=4,
-                    crop_type=BirdViewCropType.FRONT_AREA_ONLY
-                    )
-                self.scenario.reset(self.ego_vehicle)
-                c = self.world.tick()
+            #del self.ego_vehicle
+            #self.scenario = prepare_ngsim_scenario(self.client,"Val")
+            ids = list(self.world.get_actors())[0].id
+            carla.command.DestroyActor(ids)
+            self.world = self.client.get_world()
+            #self.spectator = self.world.get_spectator()
+            self.ego_vehicle = prepare_ego_vehicle(self.world)
+            #self.birdview_producer = BirdViewProducer(
+            #    self.client,  # carla.Client
+            #    target_size=PixelDimensions(width=150, height=186),
+            #    pixels_per_meter=4,
+            #    crop_type=BirdViewCropType.FRONT_AREA_ONLY
+            #    )
+            self.scenario.reset(self.ego_vehicle)
+            c = self.world.tick()
+            '''
             except Exception as e:
-                print("Error:",e)
+                print("Error in val init:",e)
                 val_success.append(0)
                 self.load_carla()
                 continue
-            
+            '''
             way = self.ego_vehicle.get_transform()
             done = False
             reward = 0
             val = 0
             cmd_buffer = [0]
             yaw_buffer = [0]
+            total_rew = 0
             while not done:
         
                     birdview = self.birdview_producer.produce(
@@ -374,7 +423,7 @@ class CarlaManager(object):
                     #rgb = BirdViewProducer.as_rgb(birdview)/255.
                     in_data = a.reshape(1,5,186,150)
         
-                    action = self.policy.select_action(in_data)
+                    action = self.policy.select_action(in_data,True)
                     steer = action[1]
                     _speed = np.clip(action[0], -1,1)
                     speed = ((_speed + 1)/2)*50 + 10
@@ -392,18 +441,19 @@ class CarlaManager(object):
                     #ego_vehicle.apply_control(carla.VehicleControl(throttle=np.clip(throttle, t_clip_n, t_clip_p), steer=np.clip(action[1], s_clip_n, s_clip_p)))#,brake=np.clip(brake, 0.0, 1.0)))
         
         
-                    try:
-                        cmd, reward, done, _ = self.scenario.step(self.ego_vehicle)
+                    
+                    cmd, reward, done, _ = self.scenario.step(self.ego_vehicle)
+                    '''
                     except:
                         break
-                    '''
+                    
                     if reward < 0 :
                         reward = -0.1
                     '''
         
+                    total_rew += reward
         
-        
-                    #print(reward, cmd, _['scenario_data']['original_to_ego_distance'], throttle,steer)
+                    #print(reward, cmd)
         
                     val = cmd.value
                     cmd_buffer.append(val)
@@ -416,20 +466,48 @@ class CarlaManager(object):
                     
                     way = _["scenario_data"]["original_veh_transform"]
                     #way = scenario._target_lane_waypoint.transform 
-                    '''
-                    rgb = BirdViewProducer.as_rgb(birdview)
-                    cv2.imshow('Frame',rgb)
-                    if cv2.waitKey(25) & 0xFF == ord('q'):
-                        break
-                    '''
                     c = self.world.tick()
             if reward >0.9:
+                print("Success!")
                 #val_reward.append(reward)
                 val_success.append(1)
             else:
                 #val_reward.append(reward)
                 val_success.append(0)
-                
+            print(total_rew)
+        try:
+            self.scenario.close()
+        except:
+            pass
+        self.scenario = prepare_ngsim_scenario(self.client)
+        self.world = self.client.get_world()
+        #self.spectator = self.world.get_spectator()
+        self.ego_vehicle = prepare_ego_vehicle(self.world)
+        self.birdview_producer = BirdViewProducer(
+            self.client,  # carla.Client
+            target_size=PixelDimensions(width=150, height=186),
+            pixels_per_meter=4,
+            crop_type=BirdViewCropType.FRONT_AREA_ONLY
+        )
+        
+        '''
+        except Exception as e:
+            print("Re init Train:",e)
+            self.load_carla()
+            self.scenario = prepare_ngsim_scenario(self.client)
+            self.world = self.client.get_world()
+            #self.spectator = self.world.get_spectator()
+            self.ego_vehicle = prepare_ego_vehicle(self.world)
+            self.birdview_producer = BirdViewProducer(
+                self.client,  # carla.Client
+                target_size=PixelDimensions(width=150, height=186),
+                pixels_per_meter=4,
+                crop_type=BirdViewCropType.FRONT_AREA_ONLY
+            )
+        '''
+        self.scenario.reset(self.ego_vehicle)
+        self.world.tick() 
+        
         return sum(val_success)/len(val_success)
 if __name__ == "__main__":
     args = sys.argv

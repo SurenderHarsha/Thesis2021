@@ -201,16 +201,16 @@ class PPO:
         #print("--------------------------------------------------------------------------------------------")
 
 
-    def select_action(self, state):
+    def select_action(self, state,validation = False):
 
         if self.has_continuous_action_space:
             with torch.no_grad():
                 state = torch.FloatTensor(state).to(device)
                 action, action_logprob = self.policy_old.act(state)
-
-            self.buffer.states.append(state)
-            self.buffer.actions.append(action)
-            self.buffer.logprobs.append(action_logprob)
+            if not validation:
+                self.buffer.states.append(state)
+                self.buffer.actions.append(action)
+                self.buffer.logprobs.append(action_logprob)
 
             return action.detach().cpu().numpy().flatten()
 
