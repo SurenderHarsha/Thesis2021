@@ -5,7 +5,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.distributions import MultivariateNormal
+from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 import os
+
 
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
@@ -49,30 +51,31 @@ class ActorCritic(nn.Module):
             self.action_dim = action_dim
             self.action_var = torch.full((action_dim,), action_std_init * action_std_init).to(device)
         
-        
+        self.layerclear = nn.Sequential(
+            nn.Linear(1280, 512),
+            nn.Dropout(0.4),
+            nn.Linear(512,128)
+        )
         self.actor = nn.Sequential(
-            nn.Conv2d(num_channels, 16, kernel_size=8, stride=4),
+            nn.Linear(131, 64),
+            nn.Dropout(0.4),
             nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=3, stride=2),
+            nn.Linear(64,64),
+            nn.Dropout(0.4),
             nn.ReLU(),
-            nn.MaxPool2d(4,2),
-            nn.Flatten(),
-            nn.Linear(2240, action_dim),
+            nn.Linear(64,action_dim),
             nn.Tanh()
-        
         )
         self.critic = nn.Sequential(
-            nn.Conv2d(num_channels, 16, kernel_size=8, stride=4),
+            nn.Linear(131, 64),
+            nn.Dropout(0.4),
             nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=3, stride=2),
+            nn.Linear(64,64),
+            nn.Dropout(0.4),
             nn.ReLU(),
-            nn.MaxPool2d(4,2),
-            nn.Flatten(),
-            nn.Linear(2240, 1),
+            nn.Linear(64,1),
             nn.Tanh()
-        
         )
-        
     def set_action_std(self, new_action_std):
 
         if self.has_continuous_action_space:
@@ -95,7 +98,12 @@ class ActorCritic(nn.Module):
 
         if self.has_continuous_action_space:
             #x = self.main(state)
-            action_mean = self.actor(state)
+            inps1 = state[:,:-3]
+            inps2 = state[:,-3:]
+            action_m = self.layerclear(inps1)
+            #print(action_m,inps2,action_m.shape,inps2.shape)
+            inps = torch.cat((action_m,inps2),1)
+            action_mean = self.actor(inps)
             cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
             dist = MultivariateNormal(action_mean, cov_mat)
         else:
@@ -113,10 +121,11 @@ class ActorCritic(nn.Module):
         if self.has_continuous_action_space:
             if len(state.shape) == 3:
                 state = state.reshape((1,5,186,150))
-            #x = self.main(state)
-            #print(state.shape)
-            action_mean = self.actor(state)
-            #print(action_mean.shape)
+            inps1 = state[:,:-3]
+            inps2 = state[:,-3:]
+            action_m = self.layerclear(inps1)
+            inps = torch.cat((action_m,inps2),1)
+            action_mean = self.actor(inps)
             action_var = self.action_var.expand_as(action_mean)
             #print(action_var,action_var.shape)
             cov_mat = torch.diag_embed(action_var).to(device)
@@ -133,7 +142,12 @@ class ActorCritic(nn.Module):
 
         action_logprobs = dist.log_prob(action)
         dist_entropy = dist.entropy()
-        state_values = self.critic(state)
+        dist_entropy = dist.entropy()
+        inps1 = state[:,:-3]
+        inps2 = state[:,-3:]
+        critic_m = self.layerclear(inps1)
+        inps = torch.cat((critic_m,inps2),1)
+        state_values = self.critic(inps)
         #print(state_values,action_mean)
         return action_logprobs, state_values, dist_entropy
 
@@ -155,7 +169,8 @@ class PPO:
         self.optimizer = torch.optim.Adam([
                         {'params': self.policy.actor.parameters(), 'lr': lr_actor},
                         
-                        {'params': self.policy.critic.parameters(),'lr': lr_critic}
+                        {'params': self.policy.critic.parameters(),'lr': lr_critic},
+                        {'params': self.policy.layerclear.parameters(),'lr': lr_actor}
                         
                     ])
         self.optimizer2 = torch.optim.Adam([
@@ -253,32 +268,33 @@ class PPO:
         
         # Optimize policy for K epochs
         for _ in range(self.K_epochs):
-
-            # Evaluating old actions and values
-            logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions)
-            #print(state_values)
-            # match state_values tensor dimensions with rewards tensor
-            state_values = torch.squeeze(state_values)
-            
-            #state_values = torch.
-            # Finding the ratio (pi_theta / pi_theta__old)
-            ratios = torch.exp(logprobs - old_logprobs.detach())
-            #print(ratios)
-            # Finding Spurrogate Loss
-            advantages = rewards - state_values.detach()   
-            #print(rewards)
-            surr1 = ratios * advantages
-            surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
-            #print(state_values)
-            #print(state_values.shape)
-            # final loss of clipped objective PPO
-            loss = -torch.min(surr1, surr2) + 0.5*self.MseLoss(state_values, rewards) - 0.01*dist_entropy
-            #print(surr1,surr2,state_values,rewards,dist_entropy,loss)
-            # take gradient step
-            self.optimizer.zero_grad()
-            loss.mean().backward()
-            self.optimizer.step()
-            #self.optimizer2.step()
+            for index in BatchSampler(SubsetRandomSampler(range(len(self.buffer.states))), 32, False):
+                # Evaluating old actions and values
+                logprobs, state_values, dist_entropy = self.policy.evaluate(old_states[index], old_actions[index])
+                #print(state_values)
+                # match state_values tensor dimensions with rewards tensor
+                state_values = torch.squeeze(state_values)
+                
+                #state_values = torch.
+                # Finding the ratio (pi_theta / pi_theta__old)
+                ratios = torch.exp(logprobs - old_logprobs[index].detach())
+                #print(ratios)
+                # Finding Spurrogate Loss
+                advantages = rewards[index] - state_values.detach()   
+                #print(rewards)
+                surr1 = ratios * advantages
+                surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
+                #print(state_values)
+                #print(state_values.shape)
+                # final loss of clipped objective PPO
+                
+                loss = -torch.min(surr1, surr2) + 0.5*self.MseLoss(state_values, rewards[index]) - 0.01*dist_entropy
+                #print(surr1,surr2,state_values,rewards,dist_entropy,loss)
+                # take gradient step
+                self.optimizer.zero_grad()
+                loss.mean().backward()
+                self.optimizer.step()
+                #self.optimizer2.step()
             
         # Copy new weights into old policy
         self.policy_old.load_state_dict(self.policy.state_dict())
