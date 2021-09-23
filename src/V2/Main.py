@@ -143,7 +143,7 @@ class CarlaManager(object):
     def load_policy(self,load_file):
         self.policy.load(load_file)
     
-    def train(self,save_path,hist_path,iteration ,epochs = 500,batch_size = 500,freq_decrease = 1000):
+    def train(self,save_path,hist_path,iteration ,epochs = 500,batch_size = 1000,freq_decrease = 1000):
         total_reward_list = []
         epoch_list = []
         step_list = []
@@ -273,8 +273,8 @@ class CarlaManager(object):
                 #val = cmd.value
                 cmd_buffer.append(val)
                 yaw_buffer.append(self.ego_vehicle.get_transform().rotation.yaw)
-                if len(cmd_buffer) > 10:
-                    if sum(cmd_buffer[-10:]) == 0 and _['on_target_lane'] and abs(sum(yaw_buffer[-5:])/5)<=10:
+                if len(cmd_buffer) > 5:
+                    if sum(cmd_buffer[-5:]) == 0 and _['on_target_lane'] and abs(sum(yaw_buffer[-5:])/5)<=10:
                         reward = 1
                         done = True
                 way = _["scenario_data"]["original_veh_transform"]
@@ -300,7 +300,7 @@ class CarlaManager(object):
                         #freq_n += 1000
                         #decay_c -= 50
                         #print("Decaying:",self.pop.action_std)
-                        self.policy.decay_action_std(0.01,0.1)
+                        self.policy.decay_action_std(0.001,0.1)
                         
                         min_r_avg = sum(total_reward_list[-50:])/len(total_reward_list[-50:])
                 if len(self.policy.buffer.states) > freq:
@@ -311,7 +311,7 @@ class CarlaManager(object):
                         #torch.cuda.empty_cache()
                         val_score = self.validate()
                         
-                        self.policy.decay_action_std(0.001,0.1)
+                        self.policy.decay_action_std(0.0005,0.1)
                         print("Saving model and history")
                         History = [epoch_list,total_reward_list,step_list,val_score]
                         total_reward_list = []
@@ -458,8 +458,8 @@ class CarlaManager(object):
                     val = cmd.value
                     cmd_buffer.append(val)
                     yaw_buffer.append(self.ego_vehicle.get_transform().rotation.yaw)
-                    if len(cmd_buffer) > 10:
-                        if sum(cmd_buffer[-10:]) == 0 and _['on_target_lane'] and abs(sum(yaw_buffer[-5:])/5)<=10:
+                    if len(cmd_buffer) > 5:
+                        if sum(cmd_buffer[-5:]) == 0 and _['on_target_lane'] and abs(sum(yaw_buffer[-5:])/5)<=10:
                             reward = 1
                             done = True
         
