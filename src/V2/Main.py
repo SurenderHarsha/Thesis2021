@@ -77,14 +77,14 @@ def prepare_ego_vehicle(world: carla.World) -> carla.Actor:
 class CarlaManager(object):
     
     
-    def __init__(self,random_seed = 66307,host = 'localhost',port = 2000):
+    def __init__(self,random_seed = 663,host = 'localhost',port = 2000):
         self.update_timestep = 1000     # update policy every n timesteps
-        self.K_epochs = 40               # update policy for K epochs
-        self.eps_clip = 0.2              # clip parameter for PPO
-        self.gamma = 0.999                # discount factor
+        self.K_epochs = 80               # update policy for K epochs
+        self.eps_clip = 0.1              # clip parameter for PPO
+        self.gamma = 0.99                # discount factor
         
         self.lr_actor = 0.0001       # learning rate for actor network
-        self.lr_critic = 0.001       # learning rate for critic network
+        self.lr_critic = 0.0001       # learning rate for critic network
         
         self.save_every = 100
         self.init_val_score = 0.0
@@ -157,7 +157,7 @@ class CarlaManager(object):
             way.location.x += 100
             way.location.y -= 7
         return way
-    def train(self,save_path,hist_path,iteration ,epochs = 500,batch_size = 500,freq_decrease = 1000):
+    def train(self,save_path,hist_path,iteration ,epochs = 500,batch_size = 1000,freq_decrease = 1000):
         total_reward_list = []
         epoch_list = []
         step_list = []
@@ -169,6 +169,7 @@ class CarlaManager(object):
         freq_n = freq_decrease
         min_r_avg = -1
         for epoch in range(epochs):
+            self.epoch = epoch
             #torch.cuda.empty_cache()
             step = 0
             try:
@@ -305,11 +306,11 @@ class CarlaManager(object):
                 cmd_buffer.append(val)
                 yaw_buffer.append(self.ego_vehicle.get_transform().rotation.yaw)
                 if len(cmd_buffer) > 5:
-                    if sum(cmd_buffer[-5:]) == 0 and _['on_target_lane'] and abs(sum(yaw_buffer[-5:])/5)<=10:
+                    if sum(cmd_buffer[-5:]) == 0 and _['on_target_lane'] and abs(yaw_buffer[-1])<=10:
                         reward = 1
                         done = True
                 way = self.way_cal(self.ego_vehicle,val)
-                reward = np.clip(reward,-1,1)
+                #reward = np.clip(reward,-1,1)
                 self.policy.buffer.rewards.append(reward)
                 self.policy.buffer.is_terminals.append(done)
                 
@@ -474,7 +475,8 @@ class CarlaManager(object):
                         inps = [1,0,0]
                     inps = np.array(inps)
                     ap = np.concatenate((in_data[0],inps)).reshape(1,1283)
-                    action = self.policy.select_action(ap,True)
+                    with torch.no_grad():
+                        action = self.policy.select_action(ap,True)
                     steer = action[1]
                     _speed = np.clip(action[0], -1,1)
                     speed = ((_speed + 1)/2)*50 + 10
@@ -510,7 +512,7 @@ class CarlaManager(object):
                     cmd_buffer.append(val)
                     yaw_buffer.append(self.ego_vehicle.get_transform().rotation.yaw)
                     if len(cmd_buffer) > 5:
-                        if sum(cmd_buffer[-5:]) == 0 and _['on_target_lane'] and abs(sum(yaw_buffer[-5:])/5)<=10:
+                        if sum(cmd_buffer[-5:]) == 0 and _['on_target_lane'] and abs(yaw_buffer[-1])<=10:
                             reward = 1
                             done = True
         
@@ -560,9 +562,9 @@ class CarlaManager(object):
         self.scenario.reset(self.ego_vehicle)
         self.world.tick() 
         val_scores = sum(val_success)/len(val_success)
-        if val_scores > self.init_val_score:
+        if self.epoch % 10000 == 0 and self.epoch != 0:
             self.init_val_score = val_scores
-            self.policy.decay_action_std(0.01,0.1)
+            self.policy.decay_action_std(0.01,0.2)
             print("Improvement!")
         return val_scores
 if __name__ == "__main__":
