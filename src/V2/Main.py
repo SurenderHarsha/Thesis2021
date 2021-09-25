@@ -87,7 +87,7 @@ class CarlaManager(object):
         self.lr_critic = 0.001       # learning rate for critic network
         
         self.save_every = 100
-        
+        self.init_val_score = 0.0
         
         torch.manual_seed(random_seed)
         random.seed(random_seed)
@@ -198,7 +198,7 @@ class CarlaManager(object):
             
             total_r = 0
             val = 0
-            way = way_cal(self.ego_vehicle,val)
+            way = self.way_cal(self.ego_vehicle,val)
             #way = self.ego_vehicle.get_transform()
             t_clip_n = 0.0
             t_clip_p = 1.0
@@ -289,7 +289,7 @@ class CarlaManager(object):
                     
                     total_r = 0
                     val = 0
-                    way = way_cal(self.ego_vehicle,val)
+                    way = self.way_cal(self.ego_vehicle,val)
                     #way = self.ego_vehicle.get_transform()
                     cmd_buffer = [0]
                     yaw_buffer = [0]
@@ -308,7 +308,7 @@ class CarlaManager(object):
                     if sum(cmd_buffer[-5:]) == 0 and _['on_target_lane'] and abs(sum(yaw_buffer[-5:])/5)<=10:
                         reward = 1
                         done = True
-                way = way_cal(self.ego_vehicle,val)
+                way = self.way_cal(self.ego_vehicle,val)
                 reward = np.clip(reward,-1,1)
                 self.policy.buffer.rewards.append(reward)
                 self.policy.buffer.is_terminals.append(done)
@@ -441,7 +441,7 @@ class CarlaManager(object):
             done = False
             reward = 0
             val = 0
-            way = way_cal(self.ego_vehicle,val)
+            way = self.way_cal(self.ego_vehicle,val)
             cmd_buffer = [0]
             yaw_buffer = [0]
             total_rew = 0
@@ -515,7 +515,7 @@ class CarlaManager(object):
                             done = True
         
                     
-                    way = way_cal(self.ego_vehicle,val)
+                    way = self.way_cal(self.ego_vehicle,val)
                     #way = scenario._target_lane_waypoint.transform 
                     c = self.world.tick()
             if reward >=0.9:
@@ -559,8 +559,12 @@ class CarlaManager(object):
         '''
         self.scenario.reset(self.ego_vehicle)
         self.world.tick() 
-        
-        return sum(val_success)/len(val_success)
+        val_scores = sum(val_success)/len(val_success)
+        if val_scores > self.init_val_score:
+            self.init_val_score = val_scores
+            self.policy.decay_action_std(0.01,0.1)
+            print("Improvement!")
+        return val_scores
 if __name__ == "__main__":
     args = sys.argv
     c = CarlaManager()
