@@ -7,7 +7,7 @@ import torch.nn as nn
 from torch.distributions import MultivariateNormal,Beta
 from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 import os
-
+from torch.distributions import Categorical
 
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
@@ -56,6 +56,7 @@ class ActorCritic(nn.Module):
             nn.Dropout(0.4),
             nn.Linear(512,128)
         )
+        '''
         self.layer2 = nn.Sequential(
             nn.Linear(131, 64),
             nn.Dropout(0.4),
@@ -65,13 +66,16 @@ class ActorCritic(nn.Module):
             nn.ReLU()
         
         )
+        '''
         self.actor = nn.Sequential(
-            
+            nn.Linear(131, 64),
+            nn.Dropout(0.4),
+            nn.ReLU(),
             nn.Linear(64,64),
             nn.Dropout(0.4),
             nn.ReLU(),
-            nn.Linear(64,2),
-            nn.Softplus()
+            nn.Linear(64,30),
+            nn.Softmax(dim=-1)
         )
         self.critic = nn.Sequential(
             nn.Linear(131, 64),
@@ -83,6 +87,7 @@ class ActorCritic(nn.Module):
             nn.Linear(64,1),
             nn.Tanh()
         )
+        '''
         self.var = nn.Sequential(
             
             nn.Linear(64,64),
@@ -91,6 +96,7 @@ class ActorCritic(nn.Module):
             nn.Linear(64,2),
             nn.Softplus()
         )
+        '''
     def set_action_std(self, new_action_std):
 
         if self.has_continuous_action_space:
@@ -124,8 +130,13 @@ class ActorCritic(nn.Module):
             dist = Beta(action_mean, action_var)
             
         else:
-            action_probs = self.actor(state)
-            #dist = Categorical(action_probs)
+            inps1 = state[:,:-3]
+            inps2 = state[:,-3:]
+            action_m = self.layer1(inps1)
+            
+            inps = torch.cat((action_m,inps2),1)
+            action_probs = self.actor(inps)
+            dist = Categorical(action_probs)
 
         action = dist.sample()
         action_logprob = dist.log_prob(action)
@@ -152,8 +163,12 @@ class ActorCritic(nn.Module):
                 action = action.reshape(-1, self.action_dim)
 
         else:
-            action_probs = self.actor(state)
-            #dist = Categorical(action_probs)
+            inps1 = state[:,:-3]
+            inps2 = state[:,-3:]
+            action_m = self.layer1(inps1)
+            inps = torch.cat((action_m,inps2),1)
+            action_probs = self.actor(inps)
+            dist = Categorical(action_probs)
 
         action_logprobs = dist.log_prob(action)
         dist_entropy = dist.entropy()
@@ -185,9 +200,9 @@ class PPO:
                         {'params': self.policy.actor.parameters(), 'lr': lr_actor},
                         
                         {'params': self.policy.critic.parameters(),'lr': lr_critic},
-                        {'params': self.policy.layer1.parameters(),'lr': lr_actor},
-                        {'params': self.policy.layer2.parameters(),'lr': lr_actor},
-                        {'params': self.policy.var.parameters(),'lr': lr_actor}
+                        {'params': self.policy.layer1.parameters(),'lr': lr_actor}
+                        #{'params': self.policy.layer2.parameters(),'lr': lr_actor},
+                        #{'params': self.policy.var.parameters(),'lr': lr_actor}
                         
                     ])
         
@@ -250,11 +265,13 @@ class PPO:
             with torch.no_grad():
                 state = torch.FloatTensor(state).to(device)
                 action, action_logprob = self.policy_old.act(state)
-            
-            self.buffer.states.append(state)
-            self.buffer.actions.append(action)
-            self.buffer.logprobs.append(action_logprob)
-
+            if not validation:
+                self.buffer.states.append(state)
+                self.buffer.actions.append(action)
+                self.buffer.logprobs.append(action_logprob)
+            else:
+                del state
+                del action_logprob
             return action.item()
 
 

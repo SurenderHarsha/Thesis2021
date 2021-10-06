@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from PPOV3 import *
+from PPOV5 import *
 import sys
 #sys.path.append('/home/surender/Downloads/CARLA_0.9.9.4/PythonAPI/carla/dist')
 import carla
@@ -29,8 +29,8 @@ import random
 
 #mdl = MobileNet(input_shape=(186, 150, 3),include_top=False,weights="imagenet",pooling=max)
 
-model_path = '/data/s4120310/ModelsV5/'
-history_path = '/data/s4120310/HistoryV5/'
+model_path = '/data/s4120310/ModelsV6/'
+history_path = '/data/s4120310/HistoryV6/'
 
 def prepare_ngsim_scenario(client: carla.Client, data_mode = "train") -> Scenario:
     data_dir = os.environ.get("NGSIM_DIR")
@@ -78,7 +78,7 @@ def prepare_ego_vehicle(world: carla.World) -> carla.Actor:
 class CarlaManager(object):
     
     
-    def __init__(self,random_seed = 23456,host = 'localhost',port = 2000):
+    def __init__(self,random_seed = 2345,host = 'localhost',port = 2000):
         self.update_timestep = 1000     # update policy every n timesteps
         self.K_epochs = 40               # update policy for K epochs
         self.eps_clip = 0.2              # clip parameter for PPO
@@ -97,10 +97,15 @@ class CarlaManager(object):
         self.port = port
         self.scenario = None
         self.mobilenet = models.mobilenet_v2(pretrained=True).to(device)
+        self.action_space = [[0., 0.], [-0.3,0.], [-0.15,0.], [0.25,0.], [0.5, 0.], [0.7, 0.],
+                [0., 0.25], [-0.3,0.25], [-0.15,0.25], [0.25,0.25], [0.5, 0.25], [0.7, 0.25],
+                [0., -0.25], [-0.3,-0.25], [-0.15,-0.25], [0.25,-0.25], [0.5, -0.25], [0.7, -0.25],
+                [0., 0.5], [-0.3,0.5], [-0.15,0.5], [0.25,0.5], [0.5, 0.5], [0.7, 0.5],
+                [0., -0.5], [-0.3,-0.5], [-0.15,-0.5], [0.25,-0.5], [0.5, -0.5], [0.7, -0.5]]
         self.mn=[0.485, 0.456, 0.406]
         self.std=[0.229, 0.224, 0.225]
         self.load_carla()
-        self.init_algorithm(2)
+        self.init_algorithm(30)
         
         
         
@@ -144,7 +149,7 @@ class CarlaManager(object):
                 self.load_carla()
                 #sys.exit(0)
     def init_algorithm(self,out_dim):
-        self.policy = PPO(1,out_dim,self.lr_actor,self.lr_critic,self.gamma,self.K_epochs,self.eps_clip,True)
+        self.policy = PPO(1,out_dim,self.lr_actor,self.lr_critic,self.gamma,self.K_epochs,self.eps_clip,False)
     def load_policy(self,load_file):
         self.policy.load(load_file)
     
@@ -159,7 +164,7 @@ class CarlaManager(object):
             way.location.x += 100
             way.location.y -= 7
         return way
-    def train(self,save_path,hist_path,iteration ,epochs = 500,batch_size = 2000,freq_decrease = 1000):
+    def train(self,save_path,hist_path,iteration ,epochs = 500,batch_size = 100,freq_decrease = 1000):
         total_reward_list = []
         epoch_list = []
         step_list = []
@@ -256,20 +261,26 @@ class CarlaManager(object):
                     break
     
                 action = self.policy.select_action(ap)
-                steer = action[0] 
-                speed = action[1]
+                action = self.action_space[action]
+                steer = action[1] 
+                #speed = action[1]
                 #action[0] = action[0]*2 - 1
 
-                steer = steer*2 - 1
-                speed = speed*120
+                #steer = steer*2 - 1
+                #speed = speed*120
                 #_speed = np.clip(action[0], -1,1)
                 #speed = ((_speed + 1)/2)*50 + 10
                 
-                pid = VehiclePIDController(self.ego_vehicle)
-                k = pid.run_step(speed,way)
-                throttle = k.throttle
-                brake = k.brake
-                
+                #pid = VehiclePIDController(self.ego_vehicle)
+                #k = pid.run_step(speed,way)
+                #throttle = k.throttle
+                #brake = k.brake
+                throttle = 0.0
+                brake = 0.0
+                if action[0]<0.0:
+                    brake = -1*action[0]
+                else:
+                    throttle = action[0]
                 
                 self.ego_vehicle.apply_control(carla.VehicleControl(throttle=np.clip(throttle, t_clip_n, t_clip_p), steer=np.clip(steer, s_clip_n, s_clip_p),brake=np.clip(brake, 0.0, 1.0)))
                 
@@ -495,20 +506,27 @@ class CarlaManager(object):
                     with torch.no_grad():
                         action = self.policy.select_action(ap,True)
                     #action = action * 2 - 1
-                    steer = action[0]
-                    speed = action[1]
-                    steer = steer * 2 - 1
-                    speed = speed * 120
+                    action = self.action_space[action]
+
+                    steer = action[1]
+                    #speed = action[1]
+                    #steer = steer * 2 - 1
+                    #speed = speed * 120
                     #_speed = np.clip(action[0], -1,1)
                     #speed = ((_speed + 1)/2)*50 + 10
         
         
         
-                    pid = VehiclePIDController(self.ego_vehicle)
-                    k = pid.run_step(speed,way)
-                    throttle = k.throttle
-                    brake = k.brake
-        
+                    #pid = VehiclePIDController(self.ego_vehicle)
+                    #k = pid.run_step(speed,way)
+                    #throttle = k.throttle
+                    #brake = k.brake
+                    throttle = 0.0
+                    brake = 0.0
+                    if action[0]<0.0:
+                        brake = -1*action[0]
+                    else:
+                        throttle = action[0]
                     avg_steer = steer
                     self.ego_vehicle.apply_control(carla.VehicleControl(throttle=throttle, steer=np.clip(avg_steer, s_clip_n, s_clip_p),brake=brake))
         
@@ -524,7 +542,8 @@ class CarlaManager(object):
                     if reward < 0 :
                         reward = -0.1
                     '''
-        
+                    if reward == -1:
+                        reward = 0
                     total_rew += reward
         
                     #print(reward, cmd)
@@ -543,10 +562,10 @@ class CarlaManager(object):
                     way = self.way_cal(self.ego_vehicle,val)
                     #way = scenario._target_lane_waypoint.transform 
                     c = self.world.tick()
-            if reward >=0.9:
+            if total_rew >0.0:
                 print("Success!")
                 #val_reward.append(reward)
-                val_success.append(1)
+                val_success.append(total_rew)
             else:
                 #val_reward.append(reward)
                 val_success.append(0)
@@ -589,10 +608,11 @@ class CarlaManager(object):
 if __name__ == "__main__":
     args = sys.argv
     c = CarlaManager()
+    batch_size = int(args[3])
     try:
-        load_file_name = args[3]
+        load_file_name = args[4]
         
-        load_q = bool(args[4])
+        load_q = bool(args[5])
     except:
         load_file_name = ""
         load_q = False
@@ -604,7 +624,7 @@ if __name__ == "__main__":
     iteration = int(args[2])
     
     
-    c.train(model_path,history_path,iteration,total_epochs)
+    c.train(model_path,history_path,iteration,total_epochs,batch_size)
     print("Done Training!")
             
 

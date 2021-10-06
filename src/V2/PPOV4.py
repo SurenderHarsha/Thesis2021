@@ -71,8 +71,18 @@ class ActorCritic(nn.Module):
             nn.Dropout(0.4),
             nn.ReLU(),
             nn.Linear(64,2),
+            nn.Tanh()
+        )
+        '''
+        self.speedAlpha = nn.Sequential(
+            nn.Linear(64,1),
             nn.Softplus()
         )
+        self.speedBeta = nn.Sequential(
+            nn.Linear(64,1),
+            nn.Softplus()
+        )
+        '''
         self.critic = nn.Sequential(
             nn.Linear(131, 64),
             nn.Dropout(0.4),
@@ -85,10 +95,7 @@ class ActorCritic(nn.Module):
         )
         self.var = nn.Sequential(
             
-            nn.Linear(64,64),
-            nn.Dropout(0.4),
-            nn.ReLU(),
-            nn.Linear(64,2),
+            nn.Linear(64,1),
             nn.Softplus()
         )
     def set_action_std(self, new_action_std):
@@ -119,10 +126,15 @@ class ActorCritic(nn.Module):
             #print(action_m,inps2,action_m.shape,inps2.shape)
             inps = torch.cat((action_m,inps2),1)
             x = self.layer2(inps)
-            action_mean = self.actor(x) + 1
-            action_var = self.var(x) + 1
-            dist = Beta(action_mean, action_var)
-            
+            action_mean = self.actor(x)
+            action_var = self.var(x) + 0.0001
+            action_var = action_var.expand_as(action_mean)
+            cov_mat = torch.diag_embed(action_var)
+            dist = MultivariateNormal(action_mean,cov_mat)
+            #speed_alpha = self.speedAlpha(x) + 0.0001
+            #speed_beta = self.speedBeta(x) + 0.0001
+            #dist = Beta(action_mean, action_var)
+            #dist3 = Beta(speed_alpha
         else:
             action_probs = self.actor(state)
             #dist = Categorical(action_probs)
@@ -137,15 +149,18 @@ class ActorCritic(nn.Module):
 
         if self.has_continuous_action_space:
             if len(state.shape) == 3:
-                state = state.reshape((1,3,224,224))
+                state = state.reshape((1,5,224,224))
             inps1 = state[:,:-3]
             inps2 = state[:,-3:]
             action_m = self.layer1(inps1)
             inps = torch.cat((action_m,inps2),1)
             x = self.layer2(inps)
-            action_mean = self.actor(x) + 1
-            action_var = self.var(x) + 1
-            dist = Beta(action_mean, action_var)
+            action_mean = self.actor(x)
+            action_var = self.var(x) + 0.001
+            action_var = action_var.expand_as(action_mean)
+            cov_mat = torch.diag_embed(action_var)
+            dist = MultivariateNormal(action_mean,cov_mat)
+            #dist = Beta(action_mean, action_var)
             #print(dist)
             # for single action continuous environments
             if self.action_dim == 1:
@@ -287,7 +302,6 @@ class PPO:
                 # Evaluating old actions and values
                 logprobs, state_values, dist_entropy = self.policy.evaluate(old_states[index], old_actions[index])
                 #print(state_values)
-                temp_size = logprobs.shape[0]
                 # match state_values tensor dimensions with rewards tensor
                 state_values = torch.squeeze(state_values)
                 
@@ -298,7 +312,6 @@ class PPO:
                 # Finding Spurrogate Loss
                 advantages = rewards[index] - state_values.detach()   
                 #print(rewards)
-                advantages = advantages.reshape(temp_size,1)
                 surr1 = ratios * advantages
                 surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
                 #print(state_values)

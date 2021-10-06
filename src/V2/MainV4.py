@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from PPOV3 import *
+from PPOV4 import *
 import sys
 #sys.path.append('/home/surender/Downloads/CARLA_0.9.9.4/PythonAPI/carla/dist')
 import carla
@@ -29,8 +29,8 @@ import random
 
 #mdl = MobileNet(input_shape=(186, 150, 3),include_top=False,weights="imagenet",pooling=max)
 
-model_path = '/data/s4120310/ModelsV5/'
-history_path = '/data/s4120310/HistoryV5/'
+model_path = '/data/s4120310/ModelsV6/'
+history_path = '/data/s4120310/HistoryV6/'
 
 def prepare_ngsim_scenario(client: carla.Client, data_mode = "train") -> Scenario:
     data_dir = os.environ.get("NGSIM_DIR")
@@ -78,20 +78,20 @@ def prepare_ego_vehicle(world: carla.World) -> carla.Actor:
 class CarlaManager(object):
     
     
-    def __init__(self,random_seed = 23456,host = 'localhost',port = 2000):
+    def __init__(self,random_seed = 327,host = 'localhost',port = 2000):
         self.update_timestep = 1000     # update policy every n timesteps
         self.K_epochs = 40               # update policy for K epochs
         self.eps_clip = 0.2              # clip parameter for PPO
         self.gamma = 0.99                # discount factor
         
-        self.lr_actor = 0.0001       # learning rate for actor network
+        self.lr_actor = 0.0003       # learning rate for actor network
         self.lr_critic = 0.001       # learning rate for critic network
         
         self.save_every = 100
         self.init_val_score = 0.0
         
-        torch.manual_seed(random_seed)
-        random.seed(random_seed)
+        #torch.manual_seed(random_seed)
+        #random.seed(random_seed)
         #np.random.seed()
         self.host = host
         self.port = port
@@ -159,7 +159,7 @@ class CarlaManager(object):
             way.location.x += 100
             way.location.y -= 7
         return way
-    def train(self,save_path,hist_path,iteration ,epochs = 500,batch_size = 2000,freq_decrease = 1000):
+    def train(self,save_path,hist_path,iteration ,epochs = 500,batch_size = 200,freq_decrease = 1000):
         total_reward_list = []
         epoch_list = []
         step_list = []
@@ -211,7 +211,6 @@ class CarlaManager(object):
             s_clip_p = 1.0
             cmd_buffer = [0]
             yaw_buffer = [0]
-            target_buffer = [False]
             
             while not done:
                 '''
@@ -256,13 +255,12 @@ class CarlaManager(object):
                     break
     
                 action = self.policy.select_action(ap)
-                steer = action[0] 
+                #action = action*2 - 1
+                steer = action[0]
                 speed = action[1]
-                #action[0] = action[0]*2 - 1
-
-                steer = steer*2 - 1
-                speed = speed*120
-                #_speed = np.clip(action[0], -1,1)
+                #speed = math.sqrt(speed**2)
+                
+                speed = np.clip(speed, 50,140)
                 #speed = ((_speed + 1)/2)*50 + 10
                 
                 pid = VehiclePIDController(self.ego_vehicle)
@@ -316,11 +314,10 @@ class CarlaManager(object):
                 #val = cmd.value
                 cmd_buffer.append(val)
                 yaw_buffer.append(self.ego_vehicle.get_transform().rotation.yaw)
-                target_buffer.append(_['on_target_lane'])
                 '''
                 if len(cmd_buffer) > 10:
-                    if _['on_target_lane'] and  all(item == True for item in target_buffer[-10:]):
-                        reward = 1 + random.random() 
+                    if sum(cmd_buffer[-10:]) == 0 and _['on_target_lane'] and sum([abs(x) for x in yaw_buffer[-10:]])/10<=10:
+                        reward = 1.1 + random.random()/2.0
                         done = True
                 '''
                 way = self.way_cal(self.ego_vehicle,val)
@@ -351,7 +348,7 @@ class CarlaManager(object):
                         
                         min_r_avg = sum(total_reward_list[-50:])/len(total_reward_list[-50:])
                 '''
-                if epoch % freq== 0 and epoch != 0:
+                if epoch%freq == 0  and epoch!=0:
                         #print(steer,avg_steer,throttle,brake,steer_w)
                         print("Update with batches:",len(self.policy.buffer.states))
                         self.policy.update()
@@ -460,7 +457,6 @@ class CarlaManager(object):
             cmd_buffer = [0]
             yaw_buffer = [0]
             total_rew = 0
-            target_buffer = [False]
             while not done:
         
                     birdview = self.birdview_producer.produce(
@@ -497,9 +493,8 @@ class CarlaManager(object):
                     #action = action * 2 - 1
                     steer = action[0]
                     speed = action[1]
-                    steer = steer * 2 - 1
-                    speed = speed * 120
-                    #_speed = np.clip(action[0], -1,1)
+                    #speed = math.sqrt(speed**2)
+                    speed = np.clip(speed, 50,140)
                     #speed = ((_speed + 1)/2)*50 + 10
         
         
@@ -524,29 +519,30 @@ class CarlaManager(object):
                     if reward < 0 :
                         reward = -0.1
                     '''
-        
+                    if reward == -1:
+                        reward = 0
                     total_rew += reward
         
                     #print(reward, cmd)
         
                     val = cmd.value
                     cmd_buffer.append(val)
+                    win = 0
                     yaw_buffer.append(self.ego_vehicle.get_transform().rotation.yaw)
-                    target_buffer.append(_['on_target_lane'])
                     '''
                     if len(cmd_buffer) > 10:
-                        if _['on_target_lane'] and all(item == True for item in target_buffer[-10:]):
-                            reward = 1 + random.random()
+                        if sum(cmd_buffer[-10:]) == 0 and _['on_target_lane'] and sum([abs(x) for x in yaw_buffer[-10:]])/10<=10:
+                            reward = 1 + random.random()/2.0
                             done = True
-        
+                            win = 1
                     '''
                     way = self.way_cal(self.ego_vehicle,val)
                     #way = scenario._target_lane_waypoint.transform 
                     c = self.world.tick()
-            if reward >=0.9:
+            if total_rew >0.0:
                 print("Success!")
                 #val_reward.append(reward)
-                val_success.append(1)
+                val_success.append(total_rew)
             else:
                 #val_reward.append(reward)
                 val_success.append(0)
@@ -589,10 +585,11 @@ class CarlaManager(object):
 if __name__ == "__main__":
     args = sys.argv
     c = CarlaManager()
+    batch_size = int(args[3])
     try:
-        load_file_name = args[3]
+        load_file_name = args[4]
         
-        load_q = bool(args[4])
+        load_q = bool(args[5])
     except:
         load_file_name = ""
         load_q = False
@@ -604,7 +601,7 @@ if __name__ == "__main__":
     iteration = int(args[2])
     
     
-    c.train(model_path,history_path,iteration,total_epochs)
+    c.train(model_path,history_path,iteration,total_epochs,batch_size)
     print("Done Training!")
             
 
