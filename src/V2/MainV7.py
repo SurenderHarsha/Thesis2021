@@ -90,8 +90,8 @@ class CarlaManager(object):
         self.save_every = 100
         self.init_val_score = 0.0
         
-        torch.manual_seed(random_seed)
-        random.seed(random_seed)
+        #torch.manual_seed(random_seed)
+        #random.seed(random_seed)
         #np.random.seed()
         self.host = host
         self.port = port
@@ -189,7 +189,7 @@ class CarlaManager(object):
             #torch.cuda.empty_cache()
             step = 0
             try:
-                ids = list(self.world.get_actors())[0].id
+                ids = list(self.world.get_actors())[0]
                 carla.command.DestroyActor(ids)
                 #del self.ego_vehicle
                 #self.scenario = prepare_ngsim_scenario(self.client)
@@ -219,7 +219,7 @@ class CarlaManager(object):
             total_r = 0
             val = 0
             #way = self.way_cal(self.ego_vehicle,val)
-            way = scenario._target_lane_waypoint.transform
+            way = self.scenario._target_lane_waypoint.transform
             #way = self.ego_vehicle.get_transform()
             t_clip_n = 0.0
             t_clip_p = 1.0
@@ -238,7 +238,7 @@ class CarlaManager(object):
                 speed = self.scenario._veh.speed
                 way = self.scenario._target_lane_waypoint.transform
                 way.location.x = self.ego_vehicle.get_location().x + 30
-                safe = self.check_safety(way)
+                #safe = self.check_safety(way)
                 '''
                 while True:
                     #print(current_frame,c)
@@ -246,7 +246,7 @@ class CarlaManager(object):
                         #print(current_frame,c)
                         break
                 '''
-                if step < prep_limit or not safe:
+                if step < prep_limit:
                     k = pid.run_step(speed,way)
                     #print(k.throttle)
                     self.ego_vehicle.apply_control(carla.VehicleControl(throttle=k.throttle, steer=np.clip(0.0,-1.0,1.0),brake=k.brake))
@@ -326,7 +326,7 @@ class CarlaManager(object):
                     step = 0
                     self.scenario.reset(self.ego_vehicle)
                     self.world.tick()
-                    ids = list(self.world.get_actors())[0].id
+                    ids = list(self.world.get_actors())[0]
                     carla.command.DestroyActor(ids)
                     #self.scenario = prepare_ngsim_scenario(self.client)
                     self.world = self.client.get_world()
@@ -375,7 +375,7 @@ class CarlaManager(object):
                 '''
                 #way = self.way_cal(self.ego_vehicle,val)
                 #reward = np.clip(reward,-1,1)
-                if step < prep_limit or not safe:
+                if step < prep_limit:
                     pass
                 else:
                     #print("HI")
@@ -414,7 +414,7 @@ class CarlaManager(object):
                         
                         #torch.cuda.empty_cache()
                         val_score = self.validate()
-                        
+                        self.policy.buffer.clear()
                         #self.policy.decay_action_std(0.0005,0.1)
                         print("Saving model and history")
                         History = [epoch_list,total_reward_list,step_list,val_score]
@@ -488,7 +488,7 @@ class CarlaManager(object):
             step = 0
             #del self.ego_vehicle
             #self.scenario = prepare_ngsim_scenario(self.client,"Val")
-            ids = list(self.world.get_actors())[0].id
+            ids = list(self.world.get_actors())[0]
             carla.command.DestroyActor(ids)
             self.world = self.client.get_world()
             #self.spectator = self.world.get_spectator()
@@ -501,9 +501,9 @@ class CarlaManager(object):
             #    )
             self.scenario.reset(self.ego_vehicle)
             c = self.world.tick()
-            c = self.world.tick()
-            c = self.world.tick()
-            speed = self.scenario._veh.speed
+            #c = self.world.tick()
+            #c = self.world.tick()
+            #speed = self.scenario._veh.speed
             
             '''
             except Exception as e:
@@ -531,7 +531,7 @@ class CarlaManager(object):
                     speed = self.scenario._veh.speed
                     way = self.scenario._target_lane_waypoint.transform
                     way.location.x = self.ego_vehicle.get_location().x + 30
-                    safe = self.check_safety(way)
+                    #safe = self.check_safety(way)
                     '''
                     while True:
                         #print(current_frame,c)
@@ -539,7 +539,7 @@ class CarlaManager(object):
                             #print(current_frame,c)
                             break
                     '''
-                    if step < prep_limit or not safe:
+                    if step < prep_limit:
                         k = pid.run_step(speed,way)
                         #print(k.throttle)
                         self.ego_vehicle.apply_control(carla.VehicleControl(throttle=k.throttle, steer=np.clip(0.0,-1.0,1.0),brake=k.brake))
@@ -608,8 +608,11 @@ class CarlaManager(object):
                     #ego_vehicle.apply_control(carla.VehicleControl(throttle=np.clip(throttle, t_clip_n, t_clip_p), steer=np.clip(action[1], s_clip_n, s_clip_p)))#,brake=np.clip(brake, 0.0, 1.0)))
         
         
-                    
-                    cmd, reward, done, _ = self.scenario.step(self.ego_vehicle)
+                    try:
+                        cmd, reward, done, _ = self.scenario.step(self.ego_vehicle)
+                    except Exception as e:
+                        print(e)
+                        break
                     '''
                     except:
                         break
