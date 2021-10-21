@@ -244,7 +244,7 @@ class PPO:
             with torch.no_grad():
                 helper = torch.FloatTensor(state[1]).to(device)
                 state = torch.FloatTensor(state[0]).to(device)
-                action, action_logprob = self.policy_old.act(state,validation)
+                action, action_logprob = self.policy_old.act(state,helper,validation)
             if not validation:
                 self.buffer.states.append(state)
                 self.buffer.helper.append(helper)
