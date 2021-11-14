@@ -93,6 +93,9 @@ class ActorCritic(nn.Module):
         
         )
         self.actor = nn.Sequential(
+            nn.Linear(64,64),
+            nn.Dropout(0.4),
+            nn.ReLU(),
             nn.Linear(64,action_dim),
             nn.Tanh()
         )
@@ -208,7 +211,7 @@ class PPO:
                         {'params': self.policy.layer2.parameters(), 'lr': lr_actor},
                         {'params': self.policy.actor.parameters(), 'lr': lr_actor},
                         {'params': self.policy.critic.parameters(), 'lr': lr_critic},
-                        {'params': self.policy.action_log_std, 'lr': 0.001}    
+                        {'params': self.policy.action_log_std, 'lr': 0.01}    
                     ])
         
 
