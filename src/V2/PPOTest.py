@@ -54,53 +54,43 @@ class ActorCritic(nn.Module):
         
         self.layer1 = nn.Sequential(
             
+            nn.Conv2d(num_channels, 32, kernel_size=8, stride=4), #50x150
+            nn.BatchNorm2d(32), # 13x47
+            #nn.MaxPool2d(4,2), # 5x22
+            nn.ReLU(), 
+            nn.Conv2d(32, 64, kernel_size=4, stride=2), # 11x36
+            nn.BatchNorm2d(64), #2x10
+            #nn.MaxPool2d(2,9), 
+            nn.ReLU(), # 1x1
             
-            nn.Conv2d(num_channels, 64, kernel_size=12, stride=2),
-            nn.BatchNorm2d(64), # 88x70
-            nn.MaxPool2d(4,2), # 43x34
-            nn.ReLU(),
-            nn.Conv2d(64, 256, kernel_size=3, stride=2),
-            nn.BatchNorm2d(256), #21x16
-            nn.MaxPool2d(2,1), 
-            nn.ReLU(), # 20x15
-            nn.Conv2d(256, 512, kernel_size=5, stride=2),
-            nn.BatchNorm2d(512), #8x6
-            nn.MaxPool2d(2,4),
-            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=4, stride=14), # 4x17
+            #nn.BatchNorm2d(64),
+            nn.ReLU(), # 1x1
             
-            #nn.ReLU(),
-            #nn.Conv2d(16, 32, kernel_size=3, stride=2),
-            #nn.ReLU(),
-            #nn.AvgPool2d(7,7),
-            #nn.Flatten(),
-            #nn.AvgPool2d(7),
             nn.Flatten(),
-            nn.Linear(2048, 512),
-            
-            
-            
-            #nn.Linear(15552, 512),
+            nn.Linear(64, 128),
             nn.Dropout(0.4),
-            nn.Linear(512,128)
+            nn.GELU(),
+            
+            
+            
         )
         self.layer2 = nn.Sequential(
-            nn.Linear(131, 64),
+            nn.Linear(132, 128),
             nn.Dropout(0.4),
-            nn.ReLU(),
-            nn.Linear(64,64),
-            nn.Dropout(0.4),
-            nn.ReLU()
+            nn.GELU(),
+            #nn.Linear(64,32),
+            #nn.Dropout(0.4),
+            #nn.GELU()
         
         )
         self.actor = nn.Sequential(
-            nn.Linear(64,64),
-            nn.Dropout(0.4),
-            nn.ReLU(),
-            nn.Linear(64,action_dim),
+            
+            nn.Linear(128,action_dim),
             nn.Tanh()
         )
         self.critic = nn.Sequential(
-            nn.Linear(64,1),
+            nn.Linear(128,1),
             nn.Tanh()
         )
         #self.action_log_std = nn.Parameter(torch.zeros(1, action_dim))
@@ -211,7 +201,7 @@ class PPO:
                         {'params': self.policy.layer2.parameters(), 'lr': lr_actor},
                         {'params': self.policy.actor.parameters(), 'lr': lr_actor},
                         {'params': self.policy.critic.parameters(), 'lr': lr_critic},
-                        {'params': self.policy.action_log_std, 'lr': 0.01}    
+                        {'params': self.policy.action_log_std, 'lr': 0.001}    
                     ])
         
 
@@ -309,7 +299,7 @@ class PPO:
         
         # Optimize policy for K epochs
         for _ in range(self.K_epochs):
-            for index in BatchSampler(SubsetRandomSampler(range(len(self.buffer.states))), 32, False):
+            for index in BatchSampler(SubsetRandomSampler(range(len(self.buffer.states))), 64, False):
                 # Evaluating old actions and values
                 logprobs, state_values, dist_entropy = self.policy.evaluate(old_states[index],old_helper[index], old_actions[index])
                 #print(state_values)

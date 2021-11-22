@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from PPOV9 import *
+from PPOTest import *
 import sys
 #sys.path.append('/home/surender/Downloads/CARLA_0.9.9.4/PythonAPI/carla/dist')
 import carla
@@ -22,15 +22,15 @@ import time
 import subprocess
 import re
 from controller import VehiclePIDController
-import torchvision.models as models
+#import torchvision.models as models
 import random
 
 #from tensorflow.keras.applications import MobileNet
 
 #mdl = MobileNet(input_shape=(186, 150, 3),include_top=False,weights="imagenet",pooling=max)
 
-model_path = '/data/s4120310/ModelsV9/'
-history_path = '/data/s4120310/HistoryV9/'
+model_path = '/data/s4120310/ModelsV10/'
+history_path = '/data/s4120310/HistoryV10/'
 
 def prepare_ngsim_scenario(client: carla.Client, data_mode = "train") -> Scenario:
     data_dir = os.environ.get("NGSIM_DIR")
@@ -80,7 +80,7 @@ class CarlaManager(object):
     
     def __init__(self,random_seed = 123456,host = 'localhost',port = 2000):
         self.update_timestep = 1000     # update policy every n timesteps
-        self.K_epochs = 200               # update policy for K epochs
+        self.K_epochs = 5               # update policy for K epochs
         self.eps_clip = 0.2              # clip parameter for PPO
         self.gamma = 0.99                # discount factor
         
@@ -90,8 +90,8 @@ class CarlaManager(object):
         self.save_every = 100
         self.init_val_score = 0.0
         
-        torch.manual_seed(random_seed)
-        random.seed(random_seed)
+        #torch.manual_seed(random_seed)
+        #random.seed(random_seed)
         #np.random.seed()
         self.host = host
         self.port = port
@@ -100,7 +100,7 @@ class CarlaManager(object):
         self.mn=[0.485, 0.456, 0.406]
         self.std=[0.229, 0.224, 0.225]
         self.load_carla()
-        self.init_algorithm(1)
+        self.init_algorithm(2)
         
         
         
@@ -123,19 +123,25 @@ class CarlaManager(object):
                 self.carla_simulator.start()
                
                 print("Starting carla, loading......")
-                time.sleep(20)
+                time.sleep(5)
+                c = 0
+                while c<10:
+                  try:
+                    self.client = carla.Client(self.host,self.port)
+                    #time.sleep(5)
+                    if self.scenario != None:
+                        self.scenario.close()
+                    self.scenario = prepare_ngsim_scenario(self.client)
+                    break
+                  except:
+                    c+=1
                 
-                self.client = carla.Client(self.host,self.port)
-                #time.sleep(5)
-                if self.scenario != None:
-                    self.scenario.close()
-                self.scenario = prepare_ngsim_scenario(self.client)
                 self.world = self.client.get_world()
                 self.spectator = self.world.get_spectator()
                 self.ego_vehicle = prepare_ego_vehicle(self.world)
                 self.birdview_producer = BirdViewProducer(
                 self.client,  # carla.Client
-                target_size=PixelDimensions(width=186, height=150),
+                target_size=PixelDimensions(width=50, height=150),
                 pixels_per_meter=4
                 #crop_type=BirdViewCropType.FRONT_AREA_ONLY
                 )
@@ -178,16 +184,18 @@ class CarlaManager(object):
         step_list = []
         self.scenario.reset(self.ego_vehicle)
         self.world.tick()        
-        #torch.cuda.empty_cache()
-        #val_score = self.validate()
-        #History = [0,0,0,val_score,0,0]
-        #f = open(hist_path + "History_"+str(0)+"_"+str(iteration)+".pkl",'wb')
-        #pickle.dump(History,f)
-        #f.close()
+        torch.cuda.empty_cache()
+        val_score = self.validate()
+        
+        History = [0,0,0,val_score,0,0]
+        f = open(hist_path + "History_"+str(0)+"_"+str(iteration)+".pkl",'wb')
+        pickle.dump(History,f)
+        f.close()
+        self.policy.buffer.clear()
         freq = batch_size
         freq_n = freq_decrease
         min_r_avg = -1
-        section = 6
+        section = 5
         victory_buffer = 0        
         for epoch in range(epochs):
             self.epoch = epoch
@@ -237,16 +245,17 @@ class CarlaManager(object):
             target_buffer = [False]
             steer = 0
             steer_aug = 0.1
-            prep_limit = 10*2
+            prep_limit = 10*0
             pid = VehiclePIDController(self.ego_vehicle,0.7)
             lock = 0
-            if victory_buffer >= 50000:
+            if victory_buffer >= 100000:
                 section+=1
                 victory_buffer = 0
+            print("Begin")
             while not done:
                 speed = self.scenario._veh.speed/1.603
                 way = self.scenario._target_lane_waypoint.transform
-                way.location.x = self.ego_vehicle.get_location().x + 30
+                way.location.x = self.ego_vehicle.get_location().x + 40
                 safe = self.check_safety(way)
                 '''
                 while True:
@@ -267,11 +276,11 @@ class CarlaManager(object):
                         birdview = self.birdview_producer.produce(
                             agent_vehicle=self.ego_vehicle  # carla.Actor (spawned vehicle)
                             )
-                        a = birdview[0].reshape(1,186,150)
-                        a = np.append(a,birdview[1].reshape(1,186,150),axis=0)
-                        a = np.append(a,birdview[2].reshape(1,186,150),axis=0)
-                        a = np.append(a,birdview[3].reshape(1,186,150),axis=0)
-                        a = np.append(a,birdview[4].reshape(1,186,150),axis=0)
+                        a = birdview[0].reshape(1,50,150)
+                        a = np.append(a,birdview[1].reshape(1,50,150),axis=0)
+                        a = np.append(a,birdview[2].reshape(1,50,150),axis=0)
+                        a = np.append(a,birdview[3].reshape(1,50,150),axis=0)
+                        a = np.append(a,birdview[4].reshape(1,50,150),axis=0)
                         #rgb = BirdViewProducer.as_rgb(birdview)/255.
                         '''
                         for i in range(3):
@@ -285,16 +294,16 @@ class CarlaManager(object):
                             in_data = nn.Flatten()(in_data)
                             in_data = in_data.detach().cpu().numpy()
                         '''
-                        in_data = a.reshape(1,5,186,150)
+                        in_data = a.reshape(1,5,50,150)
                         if val == 0 or val == 1:
-                            inps= [0,1,0]
+                            inps= [0,1,0,speed]
                         if val == 2 or val == 5:
-                            inps = [0,0,1]
+                            inps = [0,0,1,speed]
                         if val == 4 or val ==3:
-                            inps = [1,0,0]
+                            inps = [1,0,0,speed]
                         #inps = np.array(inps)
                         #ap = np.concatenate((in_data[0],inps)).reshape(1,1283)
-                        inputs = [in_data,np.array(inps).reshape(1,3)]
+                        inputs = [in_data,np.array(inps).reshape(1,4)]
                         #in_data = a.reshape(1,5,186,150)
                     except Exception as e:
                         print("Error in birds eye:",e)
@@ -321,12 +330,12 @@ class CarlaManager(object):
                     x = (action[0] + 1)/2
                     x = x*100
                     #y = action[1]*5
-                    #y = (action[1] + 1)/2
-                    #y = y*120
+                    y = (action[1] + 1)/2
+                    y = y*120
                     way.location.x =  self.ego_vehicle.get_location().x + x
                     #way.location.y = self.ego_vehicle.get_location().y + y
                     #action[0] = action[0]*2 - 1
-                    #speed = y
+                    speed = y
                     #steer = steer*2 - 1
                     #speed = speed*120
                     #_speed = np.clip(action[0], -1,1)
@@ -385,7 +394,7 @@ class CarlaManager(object):
                     t_clip_p = 1.0
                     steer = 0
                     steer_aug = 0.05
-                    prep_limit = 10*2
+                    prep_limit = 10*0
                     pid = VehiclePIDController(self.ego_vehicle,0.7)
                     lock = 0
                     s_clip_n = -1.0
@@ -412,7 +421,7 @@ class CarlaManager(object):
                         if sum(cmd_buffer[-10:]) == 0 and _['on_target_lane'] and sum([abs(x) for x in yaw_buffer[-10:]])/10<=10 and total_r>=0.6:
                             reward = 1 
                             done = True
-                if section == 5:
+                if section >= 5:
                     if len(cmd_buffer) > 10:
                         if sum(cmd_buffer[-10:]) == 0 and _['on_target_lane'] and sum([abs(x) for x in yaw_buffer[-10:]])/10<=10 and total_r>=0.8:
                             reward = 1 
@@ -501,7 +510,7 @@ class CarlaManager(object):
         self.ego_vehicle = prepare_ego_vehicle(self.world)
         self.birdview_producer = BirdViewProducer(
                 self.client,  # carla.Client
-                target_size=PixelDimensions(width=186, height=150),
+                target_size=PixelDimensions(width=50, height=150),
                 pixels_per_meter=4
                 #crop_type=BirdViewCropType.FRONT_AREA_ONLY
         )
@@ -524,10 +533,10 @@ class CarlaManager(object):
             )
         '''
         #self.scenario_val.reset(self.ego_vehicle)
-        self.scenario.reset(self.ego_vehicle)
+        self.scenario.reset(self.ego_vehicle,0)
         self.world.tick()
         val_count = 0
-        for i in range(50):
+        for i in range(100):
             t_clip_n = 0.0
             t_clip_p = 1.0
         
@@ -548,7 +557,7 @@ class CarlaManager(object):
             #    pixels_per_meter=4,
             #    crop_type=BirdViewCropType.FRONT_AREA_ONLY
             #    )
-            self.scenario.reset(self.ego_vehicle)
+            self.scenario.reset(self.ego_vehicle,i)
             c = self.world.tick()
             self.ego_vehicle.apply_control(carla.VehicleControl(manual_gear_shift=True, gear=4))
             c = self.world.tick()
@@ -574,14 +583,14 @@ class CarlaManager(object):
             target_buffer = [False]
             steer = 0
             steer_aug = 0.05
-            prep_limit = 10*2
+            prep_limit = 10*0
             pid = VehiclePIDController(self.ego_vehicle,0.7)
             lock = 0
             fin = 0
             while not done:
                     speed = self.scenario._veh.speed/1.603
                     way = self.scenario._target_lane_waypoint.transform
-                    way.location.x = self.ego_vehicle.get_location().x + 30
+                    way.location.x = self.ego_vehicle.get_location().x + 40
                     safe = self.check_safety(way)
                     '''
                     while True:
@@ -601,11 +610,11 @@ class CarlaManager(object):
                         birdview = self.birdview_producer.produce(
                             agent_vehicle=self.ego_vehicle  # carla.Actor (spawned vehicle)
                             )
-                        a = birdview[0].reshape(1,186,150)
-                        a = np.append(a,birdview[1].reshape(1,186,150),axis=0)
-                        a = np.append(a,birdview[2].reshape(1,186,150),axis=0)
-                        a = np.append(a,birdview[3].reshape(1,186,150),axis=0)
-                        a = np.append(a,birdview[4].reshape(1,186,150),axis=0)
+                        a = birdview[0].reshape(1,50,150)
+                        a = np.append(a,birdview[1].reshape(1,50,150),axis=0)
+                        a = np.append(a,birdview[2].reshape(1,50,150),axis=0)
+                        a = np.append(a,birdview[3].reshape(1,50,150),axis=0)
+                        a = np.append(a,birdview[4].reshape(1,50,150),axis=0)
                         #a = np.append(a,birdview[4].reshape(1,224,224),axis=0)
                         '''
                         rgb = BirdViewProducer.as_rgb(birdview)/255.
@@ -621,16 +630,16 @@ class CarlaManager(object):
                             in_data = nn.Flatten()(in_data)
                             in_data = in_data.detach().cpu().numpy()
                         '''
-                        in_data = a.reshape(1,5,186,150)
+                        in_data = a.reshape(1,5,50,150)
                         if val == 0 or val == 1:
-                            inps= [0,1,0]
+                            inps= [0,1,0,speed]
                         if val == 2 or val == 5:
-                            inps = [0,0,1]
+                            inps = [0,0,1,speed]
                         if val == 4 or val ==3:
-                            inps = [1,0,0]
+                            inps = [1,0,0,speed]
                         #inps = np.array(inps)
                         #ap = np.concatenate((in_data[0],inps)).reshape(1,1283)
-                        inputs = [in_data,np.array(inps).reshape(1,3)]
+                        inputs = [in_data,np.array(inps).reshape(1,4)]
                         
                         with torch.no_grad():
                             action = self.policy.select_action(inputs,True)
@@ -639,11 +648,11 @@ class CarlaManager(object):
                         x = (action[0] + 1)/2
                         x = x*100
                         #y = action[1]*5
-                        #y = (action[1] +1)/2
-                        #y = y*120
+                        y = (action[1] +1)/2
+                        y = y*120
                         way.location.x =  self.ego_vehicle.get_location().x + x
                         #way.location.y = self.ego_vehicle.get_location().y + y
-                        #speed = y
+                        speed = y
                         brake = 0
                         throttle = 0
                         #_speed = np.clip(action[0], -1,1)
@@ -681,18 +690,15 @@ class CarlaManager(object):
                     '''
         
                     #print(reward, cmd)
-                    total_rew += reward
+                    
                     val = cmd.value
                     cmd_buffer.append(val)
                     yaw_buffer.append(self.ego_vehicle.get_transform().rotation.yaw)
                     target_buffer.append(_['on_target_lane'])
                     #fin = 0
                     if len(cmd_buffer) > 10:
-                        if sum(cmd_buffer[-10:]) == 0 and _['on_target_lane'] and sum([abs(x) for x in yaw_buffer[-10:]])/10<=10 and total_rew>=0.6:
-                            #reward = 1
-                            #done = True
-                            #fin = 1
-                            pass
+                        if sum(cmd_buffer[-10:]) == 0 and _['on_target_lane'] and sum([abs(x) for x in yaw_buffer[-10:]])/10<=10 and total_rew>=0.8:
+                            reward = 1 
                     '''
                     if len(cmd_buffer) > 10:
                         if _['on_target_lane'] and all(item == True for item in target_buffer[-10:]):
@@ -700,7 +706,7 @@ class CarlaManager(object):
                             done = True
         
                     '''
-                    
+                    total_rew += reward
                     #total_rew += reward
                     #way = self.way_cal(self.ego_vehicle,val)
                     #way = scenario._target_lane_waypoint.transform 
@@ -708,7 +714,7 @@ class CarlaManager(object):
                     step+=1
             if step>1:
                 val_count+=1
-            if total_rew >0.0:
+            if total_rew >= 0.0:
                 print("Success!")
                 #val_reward.append(reward)
                 #val_count += 1
@@ -730,7 +736,7 @@ class CarlaManager(object):
         self.ego_vehicle = prepare_ego_vehicle(self.world)
         self.birdview_producer = BirdViewProducer(
             self.client,  # carla.Client
-            target_size=PixelDimensions(width=186, height=150),
+            target_size=PixelDimensions(width=50, height=150),
             pixels_per_meter=4
             #crop_type=BirdViewCropType.FRONT_AREA_ONLY
         )
