@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from PPOTest import *
+from PPOV11 import *
 import sys
 #sys.path.append('/home/surender/Downloads/CARLA_0.9.9.4/PythonAPI/carla/dist')
 import carla
@@ -179,37 +179,34 @@ class CarlaManager(object):
         return safe
 
 
-    def find_front_back(self,y_origin):
-	    d = self.scenario._ngsim_vehicles_in_carla._vehicle_by_vehicle_id
-	    y_left = y_origin - 2
-	    y_right = y_origin + 2
-	    x = self.ego_vehicle.get_location().x
-	    
-	    
-	    #Find closest front
-	    min_dist = 10000
-	    min_id = -1
-	    
-	    for i in d:
-		x_cor = d[i].get_location().x
-		y_cor = d[i].get_location().y
-		if x_cor > x and y_cor>y_left and y_cor<y_right:
-		    diff = x_cor - x
-		    if diff<min_dist:
-		        min_dist = diff
-		        min_id = i
-	    #Find closest back
-	    minb_dist = 10000
-	    minb_id = -1
-	    for i in d:
-		x_cor = d[i].get_location().x
-		y_cor = d[i].get_location().y
-		if x_cor < x and y_cor>y_left and y_cor<y_right:
-		    diff =  x - x_cor
-		    if diff<minb_dist:
-		        minb_dist = diff
-		        minb_id = i
-	    return min_id,minb_id
+    def find_front_back(self,y_origin)
+        d = self.scenario._ngsim_vehicles_in_carla._vehicle_by_vehicle_id
+        y_left = y_origin - 2
+        y_right = y_origin + 2
+        x = self.ego_vehicle.get_location().x
+        #Find closest front
+        min_dist = 10000
+        min_id = -1
+        for i in d:
+            x_cor = d[i].get_location().x
+            y_cor = d[i].get_location().y
+            if x_cor > x and y_cor>y_left and y_cor<y_right:
+                diff = x_cor - x
+                if diff<min_dist:
+                    min_dist = diff
+                    min_id = i
+        #Find closest back
+        minb_dist = 10000
+        minb_id = -1
+        for i in d:
+            x_cor = d[i].get_location().x
+            y_cor = d[i].get_location().y
+            if x_cor < x and y_cor>y_left and y_cor<y_right:
+                diff =  x - x_cor
+                if diff<minb_dist:
+                    minb_dist = diff
+                    minb_id = i
+        return min_id,minb_id
     def prep_neighbours(self,current_frame):
 	    d = self.scenario._ngsim_vehicles_in_carla._vehicle_by_vehicle_id
 	    start_lane = self.find_front_back(self.scenario._start_lane_waypoint.transform.location.y)
