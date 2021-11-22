@@ -208,47 +208,47 @@ class CarlaManager(object):
                     minb_id = i
         return min_id,minb_id
     def prep_neighbours(self,current_frame):
-	    d = self.scenario._ngsim_vehicles_in_carla._vehicle_by_vehicle_id
-	    start_lane = self.find_front_back(self.scenario._start_lane_waypoint.transform.location.y)
-	    target_lane = self.find_front_back(self.scenario._target_lane_waypoint.transform.location.y)
-	    data = []
-	    df = self.scenario._ngsim_recording._df_by_timeslot[self.scenario._lane_change.timeslot]
-	    cf = df[df['Frame ID'] == current_frame]
-	    sf = cf[cf["Lane Identification"] == self.scenario._lane_change.lane_from]
-	    srf = cf[cf["Lane Identification"] == self.scenario._lane_change.lane_to]
-	    default_spd = self.scenario._veh.speed/1.99
-	    for i in (start_lane):
-		try:
-		    x = d[i].get_location().x - self.ego_vehicle.get_location().x
-		    y = d[i].get_location().y - self.ego_vehicle.get_location().y
-		except:
-		    x = 0
-		    y = 0 
-		#print("Start:",sf[sf["Vehicle ID"] == i]["Vehicle Velocity"])
-		try:
-		    spd = float(sf[sf["Vehicle ID"] == i]["Vehicle Velocity"])
-		except:
-		    spd = default_spd
-		data.append(x/100)
-		data.append(y/100)
-		data.append(spd/130)
-	    
-	    for i in (target_lane):
-		try:
-		    x = d[i].get_location().x - self.ego_vehicle.get_location().x
-		    y = d[i].get_location().y - self.ego_vehicle.get_location().y
-		except:
-		    x = 0
-		    y = 0
-		#print(srf[srf["Vehicle ID"] == i]["Vehicle Velocity"])
-		try:
-		    spd = float(srf[srf["Vehicle ID"] == i]["Vehicle Velocity"])
-		except:
-		    spd = default_spd
-		data.append(x/100)
-		data.append(y/100)
-		data.append(spd/130)
-	    return data
+    	d = self.scenario._ngsim_vehicles_in_carla._vehicle_by_vehicle_id
+    	start_lane = self.find_front_back(self.scenario._start_lane_waypoint.transform.location.y)
+    	target_lane = self.find_front_back(self.scenario._target_lane_waypoint.transform.location.y)
+    	data = []
+    	df = self.scenario._ngsim_recording._df_by_timeslot[self.scenario._lane_change.timeslot]
+    	cf = df[df['Frame ID'] == current_frame]
+    	sf = cf[cf["Lane Identification"] == self.scenario._lane_change.lane_from]
+    	srf = cf[cf["Lane Identification"] == self.scenario._lane_change.lane_to]
+    	default_spd = self.scenario._veh.speed/1.99
+    	for i in (start_lane):
+	    try:
+	    	x = d[i].get_location().x - self.ego_vehicle.get_location().x
+	    	y = d[i].get_location().y - self.ego_vehicle.get_location().y
+	    except:
+	    	x = 0
+	    	y = 0 
+	    #print("Start:",sf[sf["Vehicle ID"] == i]["Vehicle Velocity"])
+	    try:
+	    	spd = float(sf[sf["Vehicle ID"] == i]["Vehicle Velocity"])
+	    except:
+	    	spd = default_spd
+	    data.append(x/100)
+	    data.append(y/100)
+	    data.append(spd/130)
+
+    	for i in (target_lane):
+	    try:
+	    	x = d[i].get_location().x - self.ego_vehicle.get_location().x
+	    	y = d[i].get_location().y - self.ego_vehicle.get_location().y
+	    except:
+	    	x = 0
+	    	y = 0
+	    #print(srf[srf["Vehicle ID"] == i]["Vehicle Velocity"])
+	    try:
+	    	spd = float(srf[srf["Vehicle ID"] == i]["Vehicle Velocity"])
+	    except:
+	    	spd = default_spd
+	    data.append(x/100)
+	    data.append(y/100)
+	    data.append(spd/130)
+    	return data
     def train(self,save_path,hist_path,iteration ,epochs = 500,batch_size = 200,freq_decrease = 1000):
         total_reward_list = []
         epoch_list = []
